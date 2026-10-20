@@ -46,7 +46,7 @@ services:
         condition: service_completed_successfully
     environment:
       JAVA_TOOL_OPTIONS: "${LAVALINK_JAVA_OPTS:--Xmx1G}"
-      LAVALINK_SERVER_PASSWORD: "${LAVALINK_PASSWORD:?Chưa đặt LAVALINK_PASSWORD trong .env, hãy chạy ./scripts/setup.sh}"
+      LAVALINK_SERVER_PASSWORD: "${LAVALINK_PASSWORD:?LAVALINK_PASSWORD is not set in .env, run ./scripts/setup.sh}"
       LAVASRC_SPOTIFY_ENABLED: "${LAVASRC_SPOTIFY_ENABLED:-false}"
       SPOTIFY_CLIENT_ID: "${SPOTIFY_CLIENT_ID:-}"
       SPOTIFY_CLIENT_SECRET: "${SPOTIFY_CLIENT_SECRET:-}"
@@ -113,7 +113,7 @@ services:
       - sh
       - -c
       - |
-        test -n "$$REDIS_PASSWORD" || { echo "Chưa đặt REDIS_PASSWORD trong .env (REDIS_PASSWORD is empty), hãy chạy ./scripts/setup.sh" >&2; exit 1; }
+        test -n "$$REDIS_PASSWORD" || { echo "REDIS_PASSWORD is not set in .env (REDIS_PASSWORD is empty), run ./scripts/setup.sh" >&2; exit 1; }
         exec redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes --appendfsync everysec --maxmemory 256mb --maxmemory-policy volatile-lru
     volumes:
       - redis-data:/data

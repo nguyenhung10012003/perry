@@ -29,6 +29,9 @@ export function pgErrorCode(err: unknown): string | undefined {
 /** SQLSTATE for "undefined table": migrations have not been applied. */
 export const PG_UNDEFINED_TABLE = '42P01';
 
+/** SQLSTATE for "undefined column": a newer migration (e.g. 0001 guild language) has not been applied. */
+export const PG_UNDEFINED_COLUMN = '42703';
+
 /** Creates the pool lazily: no connection is opened until the first query. */
 export function createPostgres(databaseUrl: string, logger: Logger): PostgresClient {
   const pool = new pg.Pool({
@@ -46,16 +49,18 @@ export function createPostgres(databaseUrl: string, logger: Logger): PostgresCli
 }
 
 /**
- * Probes the schema. Resolves true when the tables exist; false when migrations are missing
- * (logs the single "run npm run db:migrate" line). Other failures are rethrown.
+ * Probes the schema, including the newest column (guild_settings.language). Resolves true when it is current;
+ * false when migrations are missing or outdated (logs the single "run npm run db:migrate" line).
+ * Other failures are rethrown.
  */
 export async function ensureSchema(db: Database, logger: Logger): Promise<boolean> {
   try {
-    await db.execute(sql`select 1 from guild_settings limit 0`);
+    await db.execute(sql`select language from guild_settings limit 0`);
     return true;
   } catch (err) {
-    if (pgErrorCode(err) === PG_UNDEFINED_TABLE) {
-      logger.error('Database schema is missing. Run "npm run db:migrate" and restart the bot');
+    const code = pgErrorCode(err);
+    if (code === PG_UNDEFINED_TABLE || code === PG_UNDEFINED_COLUMN) {
+      logger.error('Database schema is missing or outdated. Run "npm run db:migrate" and restart the bot');
       return false;
     }
     throw err;

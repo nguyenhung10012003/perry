@@ -1,0 +1,352 @@
+/**
+ * All user-facing strings (English). This catalog is the source of truth: its shape defines `Messages`,
+ * and every other locale must provide exactly the same keys and function signatures.
+ * Deliberately NOT `as const`, so string leaves widen to `string` and other locales can hold different text.
+ */
+
+/** English count + noun: plural(1, "track", "tracks") -> "1 track". Local to this catalog; signatures stay unchanged. */
+const plural = (n: number, one: string, many: string): string =>
+  `${n} ${n === 1 ? one : many}`;
+
+export const en = {
+  commands: {
+    ping: { description: "Check the bot's latency" },
+    help: { description: "Show the list of bot commands" },
+    play: {
+      description: "Play music from a link or a search query",
+      query: "Link or search query",
+      source: "Search source used for a query (default: YouTube)",
+      next: "Put it at the front of the queue to play right after the current track",
+      sources: {
+        youtube: "YouTube",
+        youtubemusic: "YouTube Music",
+        soundcloud: "SoundCloud",
+      },
+    },
+    pause: { description: "Pause the current track" },
+    resume: { description: "Resume playback" },
+    skip: {
+      description: "Skip the current track",
+      to: "Queue position to jump to (skips the tracks before it)",
+    },
+    previous: { description: "Play the previous track again" },
+    stop: { description: "Stop playback and clear the queue" },
+    leave: { description: "Leave the voice channel and clear the queue" },
+    join: { description: "Make the bot join your voice channel" },
+    queue: {
+      description: "Show the music queue",
+      page: "Page number to show",
+    },
+    nowplaying: { description: "Show the current track" },
+    volume: {
+      description: "Adjust the volume (0-150)",
+      level: "Volume level from 0 to 150",
+    },
+    seek: {
+      description: "Seek to a position in the current track",
+      time: "Position, e.g. 1:30, 1:02:03 or 90 (seconds)",
+    },
+    forward: {
+      description: "Fast-forward",
+      seconds: "Number of seconds to skip ahead (1-600, default 10)",
+    },
+    rewind: {
+      description: "Rewind",
+      seconds: "Number of seconds to go back (1-600, default 10)",
+    },
+    loop: {
+      description: "Set the loop mode",
+      mode: "Loop mode",
+    },
+    shuffle: { description: "Shuffle the queue" },
+    remove: {
+      description: "Remove a track from the queue",
+      position: "Position of the track in the queue",
+    },
+    clear: {
+      description: "Remove the upcoming tracks (keeps the current track)",
+    },
+    move: {
+      description: "Move a track to another position in the queue",
+      from: "Current position of the track",
+      to: "New position",
+    },
+    filter: {
+      description: "Apply an audio filter",
+      name: "Filter to use",
+    },
+    lyrics: { description: "Show the lyrics of the current track" },
+    autoplay: {
+      description:
+        "Turn autoplay of suggested tracks on or off when the queue ends",
+      state: "Turn autoplay on or off",
+      mode: "How suggested tracks are picked (leave empty to keep the current setting)",
+      states: { on: "On", off: "Off" },
+      modes: {
+        related: "Based on the last played track",
+        seed: "Based on the last requested track",
+      },
+    },
+    radio: {
+      description:
+        "Start a radio: keeps adding related tracks from a track or query",
+      query: "Link or search query of the track that seeds the radio",
+    },
+    similar: {
+      description: "Browse and add tracks similar to the current track",
+    },
+    settings: {
+      description: "Bot settings for this server",
+      view: { description: "Show the current settings" },
+      djRole: {
+        description: "Set or clear the DJ role",
+        role: "DJ role (leave empty to clear it)",
+      },
+      defaultVolume: {
+        description: "Set the default volume for new sessions",
+        level: "Volume level from 0 to 150",
+      },
+      language: {
+        description: "Change the bot language for this server",
+        locale: "Language to use",
+        default: "Bot default",
+      },
+    },
+  },
+  categories: {
+    music: "🎵 Music",
+    general: "🧰 General",
+    settings: "⚙️ Settings",
+  },
+  errors: {
+    generic: "Something went wrong. Please try again later.",
+    onCooldown: (seconds: number) =>
+      `You're going too fast. Try again in ${plural(seconds, "second", "seconds")}.`,
+    guildOnly: "This command can only be used in a server.",
+    unknownCommand: "This command was not found.",
+    shuttingDown:
+      "The bot is shutting down for maintenance. Please try again in a few minutes.",
+    notInVoice: "You need to join a voice channel first.",
+    differentChannel: (channelName: string) =>
+      `You need to be in the same voice channel as the bot (**${channelName}**).`,
+    noPlayer: "There is no music session yet. Use `/play` first.",
+    nothingPlaying: "Nothing is playing right now.",
+    missingPerms: (channelName: string, perms: string[]) =>
+      `The bot is missing permissions in **${channelName}**: ${perms.join(", ")}.`,
+    channelFull: "The voice channel is full, so the bot cannot join.",
+    stageUnsupported: "The bot does not support Stage channels yet.",
+    djRequired: "You need the DJ role to use this command.",
+    noNode:
+      "The music server is unavailable. Please try again in a few minutes.",
+    loadFailed:
+      "Could not load this track. The source may be having issues, try again or pick another source.",
+    noResults: "No results found.",
+    sourceDisabled: "This music source is not enabled on the bot.",
+    unsafeUrl: "The link is invalid or not allowed.",
+    queueFull: (max: number) =>
+      `The queue has reached its limit of ${max} tracks.`,
+    discoveryRateLimited:
+      "The bot has looked up suggestions too many times in the past hour. Try again in a few minutes.",
+    allDuplicates:
+      "Every track in this list is already in the queue, so nothing was added.",
+    invalidTime: "Invalid time. Use `mm:ss`, `h:mm:ss` or a number of seconds.",
+    outOfRange: (max: number) =>
+      `Invalid position. Pick a number from 1 to ${max}.`,
+    volumeOutOfRange: (max: number) => `Volume must be between 0 and ${max}.`,
+    buttonExpired:
+      "This button has expired. Use the buttons on the latest message or use a command.",
+    notSeekable: "This track does not support seeking.",
+    seekBeyond: (duration: string) =>
+      `The seek position is past the end of the track (${duration}).`,
+    noPrevious: "There is no previous track.",
+    queueEmpty: "The queue is empty.",
+    queueTooShort: "The queue needs at least 2 tracks.",
+    ownerOnly: "Only the user who ran the command can control this page.",
+  },
+  permissions: {
+    ViewChannel: "View Channel",
+    Connect: "Connect",
+    Speak: "Speak",
+    SendMessages: "Send Messages",
+    EmbedLinks: "Embed Links",
+  },
+  ping: {
+    title: "🏓 Pong!",
+    api: (ms: number) => `API latency: **${ms} ms**`,
+    ws: (ms: number) => `WebSocket latency: **${ms} ms**`,
+    wsUnknown: "WebSocket latency: **no data yet**",
+    lavalink: (ms: number) => `Lavalink latency: **${ms} ms**`,
+    lavalinkOffline: "Lavalink: **not connected**",
+  },
+  music: {
+    paused: "⏸ Paused.",
+    resumed: "▶ Resumed.",
+    alreadyPaused: "The player is already paused.",
+    notPaused: "The player is not paused.",
+    skipped: (title: string) => `⏭ Skipped **${title}**.`,
+    skippedTo: (position: number, title: string) =>
+      `⏭ Jumped to track ${position}: **${title}**.`,
+    previous: (title: string) => `⏮ Playing **${title}** again.`,
+    stopped: "⏹ Stopped playback and cleared the queue.",
+    stoppedLeft:
+      "⏹ Stopped playback, cleared the queue and left the voice channel.",
+    left: "👋 Left the voice channel.",
+    joined: (channelName: string) => `🔊 Joined **${channelName}**.`,
+    volumeSet: (level: number) => `🔊 Volume: **${level}%**`,
+    seeked: (position: string) => `⏩ Seeked to **${position}**.`,
+    loopSet: (mode: string) => `🔁 Loop mode: **${mode}**`,
+    loopModes: { off: "Off", track: "Current track", queue: "Whole queue" },
+    shuffled: (count: number) =>
+      `🔀 Shuffled ${plural(count, "track", "tracks")} in the queue.`,
+    removed: (title: string) => `🗑 Removed **${title}** from the queue.`,
+    cleared: (count: number) =>
+      `🧹 Removed ${plural(count, "track", "tracks")} from the queue.`,
+    moved: (title: string, to: number) =>
+      `↕ Moved **${title}** to position ${to}.`,
+    filterSet: (name: string) => `🎚 Enabled the **${name}** filter.`,
+    filterOff: "🎚 Audio filter turned off.",
+    playingNow: (title: string) => `▶ Playing **${title}** now.`,
+    queueTrimmed: (added: number, dropped: number) =>
+      `The queue only had room for ${plural(added, "track", "tracks")}, so ${plural(dropped, "track was", "tracks were")} skipped.`,
+    added: (title: string, position: number) =>
+      `➕ Added **${title}** to the queue (position ${position}).`,
+    addedNext: (title: string) =>
+      `➕ Added **${title}** to the front of the queue.`,
+    playlistAdded: (
+      name: string,
+      count: number,
+      dropped: number,
+      duplicates = 0,
+    ) =>
+      `📃 Added playlist **${name}** (${plural(count, "track", "tracks")})${dropped > 0 ? `, skipped ${plural(dropped, "track", "tracks")} over the limit` : ""}${duplicates > 0 ? `, skipped ${plural(duplicates, "track", "tracks")} already in the queue` : ""}.`,
+    playlistStartsFrom: (title: string) =>
+      `▶ The playlist starts from the selected track: **${title}**.`,
+    trackFailed: (titles: string[], more = 0) =>
+      `⚠ Could not play: ${titles.map((title) => `**${title}**`).join(", ")}${more > 0 ? ` and ${more} more` : ""}. The bot skipped them automatically.`,
+    tooManyErrors:
+      "⚠ Too many playback errors in a row, so the bot stopped and left the voice channel.",
+    nodeLost:
+      "⚠ Lost the connection to the music server, so the session stopped. The bot will reconnect automatically.",
+    aloneLeft: "👋 Nobody is left in the voice channel, so the bot left.",
+    idleLeft:
+      "👋 No activity for 3 minutes, so the bot left the voice channel.",
+    restored: (count: number) =>
+      `♻ Restored the session from before the bot restarted (${plural(count, "track", "tracks")}).`,
+  },
+  nowPlaying: {
+    title: "Now playing",
+    author: "Artist",
+    duration: "Duration",
+    live: "🔴 LIVE",
+    requestedBy: "Requested by",
+    loop: "Loop",
+    volume: "Volume",
+    filter: "Filter",
+    unknownRequester: "Unknown",
+    autoplayRequester: "Autoplay",
+  },
+  autoplay: {
+    state: (enabled: boolean, modeName: string) =>
+      `🔁 Autoplay: **${enabled ? "On" : "Off"}** (mode: **${modeName}**).`,
+    nothingFound:
+      "No related tracks found, so autoplay is paused. Use `/play`, `/radio` or `/autoplay` to continue.",
+  },
+  radio: {
+    started: (title: string, count: number) =>
+      `📻 Started a radio from **${title}** and added ${plural(count, "track", "tracks")}. The bot will add related tracks whenever the queue runs out.`,
+    skipped: (duplicates: number, dropped: number) =>
+      `Skipped${duplicates > 0 ? ` ${plural(duplicates, "track", "tracks")} already in the queue` : ""}${duplicates > 0 && dropped > 0 ? " and" : ""}${dropped > 0 ? ` ${plural(dropped, "track", "tracks")} over the limit` : ""}.`,
+    noRelated:
+      "No related tracks found right now. The bot will try again when the queue runs out.",
+  },
+  similar: {
+    title: (track: string) => `Tracks similar to ${track}`,
+    footer: (total: number) =>
+      `${plural(total, "suggestion", "suggestions")} • Pick tracks from the list or add them all`,
+    footerAdded: (added: number, remaining: number) =>
+      `Added ${plural(added, "track", "tracks")} • ${plural(remaining, "suggestion", "suggestions")} left`,
+    footerDone: (added: number) =>
+      `Added ${plural(added, "track", "tracks")}, no suggestions left.`,
+    more: (count: number) => `… and ${count} more in the select menu`,
+    placeholder: "Pick tracks to add to the queue",
+    addAll: "Add all",
+    none: "No similar tracks found for the current track.",
+    added: (count: number) =>
+      `➕ Added ${plural(count, "track", "tracks")} to the queue.`,
+  },
+  queue: {
+    title: "📜 Queue",
+    current: "Now playing",
+    upNext: "Up next",
+    empty: "The queue is empty.",
+    footer: (
+      page: number,
+      totalPages: number,
+      count: number,
+      duration: string,
+      loop: string,
+    ) =>
+      `Page ${page}/${totalPages} • ${plural(count, "track", "tracks")} • ${duration} • Loop: ${loop}`,
+  },
+  lyrics: {
+    unsupported: "The music server does not support lyrics yet.",
+    notFound: "No lyrics found for this track.",
+    failed: "Could not fetch the lyrics right now. Please try again later.",
+    title: (track: string) => `Lyrics: ${track}`,
+    footer: (page: number, totalPages: number) => `Page ${page}/${totalPages}`,
+  },
+  settings: {
+    title: "⚙️ Server settings",
+    djRole: "DJ role",
+    defaultVolume: "Default volume",
+    twentyFourSeven: "24/7 mode",
+    autoplay: "Autoplay",
+    autoplayMode: "Autoplay mode",
+    language: "Language",
+    notSet: "Not set",
+    on: "On",
+    off: "Off",
+    djRoleSet: (roleId: string) => `✅ DJ role set to <@&${roleId}>.`,
+    djRoleCleared: "✅ DJ role cleared. Everyone can control the music.",
+    djRoleInvalid:
+      "@everyone or the bot's own role cannot be used as the DJ role.",
+    defaultVolumeSet: (level: number) =>
+      `✅ Default volume: **${level}%** (applies to new sessions).`,
+    languageDefault: (name: string) => `Default (${name})`,
+    languageSet: (name: string) => `✅ Language set to **${name}**.`,
+    languageReset: (name: string) =>
+      `✅ Using the bot default language again (**${name}**).`,
+    noPermission: "You need the Manage Server permission to use this command.",
+  },
+  filters: {
+    names: {
+      bassboost: "Bass Boost",
+      nightcore: "Nightcore",
+      "8d": "8D",
+      vaporwave: "Vaporwave",
+      karaoke: "Karaoke",
+      off: "Off",
+    },
+  },
+  buttons: {
+    pause: "Pause",
+    resume: "Resume",
+    skip: "Skip",
+    stop: "Stop",
+    loop: "Loop",
+    shuffle: "Shuffle",
+    queue: "Queue",
+    prev: "Previous",
+    next: "Next",
+  },
+  help: {
+    title: "Command list",
+    footer: "Type / to see the details of each command.",
+    empty: "No commands yet.",
+  },
+  presence: {
+    activity: "Playing music | /help",
+  },
+};
+
+export type Messages = typeof en;

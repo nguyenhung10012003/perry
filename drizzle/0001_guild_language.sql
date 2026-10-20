@@ -1,0 +1,2 @@
+ALTER TABLE "guild_settings" ADD COLUMN "language" text;--> statement-breakpoint
+ALTER TABLE "guild_settings" ADD CONSTRAINT "guild_settings_language_check" CHECK ("guild_settings"."language" in ('en', 'vi'));

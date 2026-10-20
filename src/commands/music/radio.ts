@@ -2,23 +2,20 @@ import {
   DISCOVERY_MIN_RESULTS,
   MAX_QUEUE_SIZE,
 } from "../../config/constants.js";
-import { t } from "../../i18n/index.js";
 import { planAdditions, trackKey } from "../../music/discovery/queue-add.js";
 import { trackLink } from "../../music/format.js";
 import { REQ } from "../../music/requirements.js";
 import { autocompleteSearch, loadTracks } from "../../music/search.js";
 import type { Command } from "../../types/command.js";
 import { replyError } from "../../utils/respond.js";
-import { createCommand } from "../builder.js";
+import { createCommand, describe } from "../builder.js";
 import { announce, loadErrorMessage, respondAutocomplete } from "./shared.js";
 
 
 export const radio: Command = {
-  data: createCommand("radio", t.commands.radio.description).addStringOption(
+  data: createCommand("radio", (m) => m.commands.radio.description).addStringOption(
     (option) =>
-      option
-        .setName("query")
-        .setDescription(t.commands.radio.query)
+      describe(option.setName("query"), (m) => m.commands.radio.query)
         .setRequired(true)
         .setAutocomplete(true)
         .setMaxLength(500),
@@ -26,7 +23,7 @@ export const radio: Command = {
   category: "music",
   cooldownSeconds: 10,
   requirements: REQ.play,
-  async execute({ interaction, client }) {
+  async execute({ interaction, client, t }) {
     await interaction.deferReply();
     const music = client.music;
     music.ensureReady();
@@ -37,7 +34,7 @@ export const radio: Command = {
       username: interaction.user.username,
     });
     if (outcome.kind !== "ok") {
-      await replyError(interaction, loadErrorMessage(outcome));
+      await replyError(interaction, loadErrorMessage(outcome, t));
       return;
     }
 

@@ -11,23 +11,23 @@ YES=0
 
 usage() {
   cat <<'EOF'
-Cách dùng: ./scripts/restore.sh FILE [--yes]
-           ./scripts/restore.sh --latest [--yes]
+Usage: ./scripts/restore.sh FILE [--yes]
+       ./scripts/restore.sh --latest [--yes]
 
-Khôi phục PostgreSQL từ một tệp backups/perry-*.dump. THAO TÁC GHI ĐÈ dữ liệu hiện tại:
-  1. kiểm tra tệp bằng pg_restore --list
-  2. hỏi xác nhận (gõ yes), trừ khi có --yes; không chạy được không tương tác nếu thiếu --yes
-  3. tự sao lưu trạng thái hiện tại vào backups/perry-prerestore-<thời gian>.dump
-  4. dừng bot, pg_restore --clean --if-exists, rồi bật lại bot
+Restores PostgreSQL from a backups/perry-*.dump file. This OVERWRITES the current data:
+  1. checks the file with pg_restore --list
+  2. asks for confirmation (type yes) unless --yes is given; cannot run non-interactively without --yes
+  3. backs up the current state to backups/perry-prerestore-<timestamp>.dump first
+  4. stops the bot, runs pg_restore --clean --if-exists, then starts the bot again
 
-Redis không nằm trong bản sao lưu nên không được khôi phục (cache / snapshot tự tái tạo).
+Redis is not part of the backup, so it is not restored (caches / snapshots are rebuilt automatically).
 
-Tùy chọn:
-  --latest     dùng bản perry-YYYYmmdd-HHMMSS.dump mới nhất
-  --yes        không hỏi xác nhận
-  -h, --help   hiện trợ giúp này
+Options:
+  --latest     use the newest perry-YYYYmmdd-HHMMSS.dump backup
+  --yes        do not ask for confirmation
+  -h, --help   show this help
 
-Mã thoát: 0 thành công, 1 thất bại hoặc bị từ chối, 2 sai tham số.
+Exit codes: 0 success, 1 failure or declined, 2 invalid arguments.
 EOF
 }
 
@@ -40,13 +40,13 @@ while [ $# -gt 0 ]; do
       exit 0
       ;;
     -*)
-      err "Tham số không hợp lệ: $1"
+      err "Invalid argument: $1"
       usage >&2
       exit 2
       ;;
     *)
       if [ -n "$FILE" ]; then
-        err "Chỉ nhận một FILE."
+        err "Only one FILE is accepted."
         exit 2
       fi
       FILE="$1"
@@ -56,11 +56,11 @@ while [ $# -gt 0 ]; do
 done
 
 if [ "$LATEST" = "1" ] && [ -n "$FILE" ]; then
-  err "Dùng FILE hoặc --latest, không dùng cả hai."
+  err "Use FILE or --latest, not both."
   exit 2
 fi
 if [ "$LATEST" = "0" ] && [ -z "$FILE" ]; then
-  err "Thiếu FILE. Ví dụ: ./scripts/restore.sh backups/perry-20240101-120000.dump (hoặc --latest)"
+  err "FILE is missing. Example: ./scripts/restore.sh backups/perry-20240101-120000.dump (or --latest)"
   exit 2
 fi
 if [ "$YES" = "1" ]; then
@@ -69,63 +69,63 @@ fi
 
 if [ "$LATEST" = "1" ]; then
   FILE="$(latest_backup)"
-  [ -n "$FILE" ] || die "Không có bản sao lưu nào trong $BACKUP_DIR."
+  [ -n "$FILE" ] || die "There are no backups in $BACKUP_DIR."
 elif [ ! -f "$FILE" ] && [ -f "$ROOT_DIR/$FILE" ]; then
   FILE="$ROOT_DIR/$FILE"
 fi
-[ -f "$FILE" ] || die "Không tìm thấy tệp: $FILE"
+[ -f "$FILE" ] || die "File not found: $FILE"
 
 require_docker
 require_env_file
 if [ "$(service_state postgres)" != "healthy" ]; then
-  die "Dịch vụ postgres chưa chạy hoặc chưa khỏe (hiện: $(state_label "$(service_state postgres)")). Chạy ./scripts/deploy.sh trước."
+  die "The postgres service is not running or not healthy (currently: $(state_label "$(service_state postgres)")). Run ./scripts/deploy.sh first."
 fi
 
-info "Kiểm tra tệp sao lưu..."
+info "Checking the backup file..."
 if ! validate_dump "$FILE"; then
-  die "Tệp không hợp lệ (rỗng hoặc pg_restore --list không đọc được): $FILE"
+  die "Invalid file (empty or unreadable by pg_restore --list): $FILE"
 fi
 
 printf '\n'
-warn "Sắp khôi phục cơ sở dữ liệu 'perry' từ tệp sau (không thể hoàn tác, trừ khi dùng bản sao lưu an toàn bên dưới):"
+warn "About to restore the 'perry' database from this file (cannot be undone, except with the safety backup below):"
 warn "  $FILE ($(human_size "$(file_size "$FILE")"))"
-warn "Dữ liệu hiện tại (cài đặt máy chủ, lịch sử phát...) sẽ bị thay bằng nội dung tệp."
-warn "Bot sẽ được dừng trong lúc khôi phục. Redis không được khôi phục."
+warn "The current data (server settings, play history...) will be replaced by the contents of the file."
+warn "The bot will be stopped during the restore. Redis is not restored."
 if [ "$ASSUME_YES" != "1" ]; then
   if [ ! -t 0 ]; then
-    die "Không có terminal để xác nhận. Thêm --yes nếu bạn chắc chắn muốn tiếp tục."
+    die "No terminal to confirm on. Add --yes if you are sure you want to continue."
   fi
-  if ! confirm "Tiếp tục khôi phục?" strict; then
-    die "Đã hủy, không có gì thay đổi."
+  if ! confirm "Continue with the restore?" strict; then
+    die "Cancelled, nothing was changed."
   fi
 fi
 
 mkdir -p "$BACKUP_DIR"
 safety="$BACKUP_DIR/perry-prerestore-$(date +%Y%m%d-%H%M%S).dump"
-info "Sao lưu an toàn trạng thái hiện tại: $safety"
+info "Safety backup of the current state: $safety"
 if ! backup_dump "$safety"; then
-  die "Không tạo được bản sao lưu an toàn nên dừng lại, chưa thay đổi gì."
+  die "Could not create the safety backup, so stopping here; nothing was changed."
 fi
 
-info "Dừng bot..."
+info "Stopping the bot..."
 if ! compose stop bot; then
-  die "Không dừng được bot nên chưa khôi phục gì. Bản sao lưu an toàn: $safety"
+  die "Could not stop the bot, so nothing was restored. Safety backup: $safety"
 fi
 
-info "Khôi phục (pg_restore --clean --if-exists)..."
+info "Restoring (pg_restore --clean --if-exists)..."
 if ! svc_exec_i postgres pg_restore --clean --if-exists --no-owner --no-privileges -U perry -d perry <"$FILE"; then
-  err "pg_restore báo lỗi. Bot đang ĐƯỢC GIỮ Ở TRẠNG THÁI DỪNG."
-  err "Dữ liệu trước khi khôi phục nằm ở: $safety"
-  err "Thử lại: ./scripts/restore.sh $FILE --yes"
-  err "Hoặc quay về trạng thái cũ: ./scripts/restore.sh $safety --yes"
-  err "Sau khi xong, bật bot bằng: ./scripts/deploy.sh --no-build"
+  err "pg_restore reported an error. The bot is KEPT STOPPED."
+  err "The data from before the restore is in: $safety"
+  err "Try again: ./scripts/restore.sh $FILE --yes"
+  err "Or go back to the previous state: ./scripts/restore.sh $safety --yes"
+  err "When done, start the bot with: ./scripts/deploy.sh --no-build"
   exit 1
 fi
 
-info "Bật lại bot..."
+info "Starting the bot again..."
 if ! compose start bot; then
-  die "Khôi phục xong nhưng không bật được bot. Chạy ./scripts/deploy.sh --no-build."
+  die "The restore finished but the bot could not be started. Run ./scripts/deploy.sh --no-build."
 fi
-ok "Đã khôi phục từ $FILE. Bot: $(state_label "$(service_state bot)")."
-info "Bản sao lưu an toàn trước khi khôi phục: $safety"
-info "Lưu ý: Redis không được khôi phục (cache / snapshot sẽ tự tái tạo)."
+ok "Restored from $FILE. Bot: $(state_label "$(service_state bot)")."
+info "Safety backup from before the restore: $safety"
+info "Note: Redis is not restored (caches / snapshots are rebuilt automatically)."

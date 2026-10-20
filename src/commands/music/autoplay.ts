@@ -1,9 +1,8 @@
-import { t } from "../../i18n/index.js";
 import { REQ } from "../../music/requirements.js";
 import { AUTOPLAY_MODES } from "../../settings/guild-settings.js";
 import type { AutoplayMode } from "../../settings/guild-settings.js";
 import type { Command } from "../../types/command.js";
-import { createCommand } from "../builder.js";
+import { choice, createCommand, describe } from "../builder.js";
 import { announce } from "./shared.js";
 
 function isAutoplayMode(value: string | null): value is AutoplayMode {
@@ -11,32 +10,27 @@ function isAutoplayMode(value: string | null): value is AutoplayMode {
 }
 
 export const autoplay: Command = {
-  data: createCommand("autoplay", t.commands.autoplay.description)
+  data: createCommand("autoplay", (m) => m.commands.autoplay.description)
     .addStringOption((option) =>
-      option
-        .setName("state")
-        .setDescription(t.commands.autoplay.state)
+      describe(option.setName("state"), (m) => m.commands.autoplay.state)
         .setRequired(true)
         .addChoices(
-          { name: t.commands.autoplay.states.on, value: "on" },
-          { name: t.commands.autoplay.states.off, value: "off" },
+          choice("on", (m) => m.commands.autoplay.states.on),
+          choice("off", (m) => m.commands.autoplay.states.off),
         ),
     )
     .addStringOption((option) =>
-      option
-        .setName("mode")
-        .setDescription(t.commands.autoplay.mode)
+      describe(option.setName("mode"), (m) => m.commands.autoplay.mode)
         .addChoices(
-          ...AUTOPLAY_MODES.map((mode) => ({
-            name: t.commands.autoplay.modes[mode],
-            value: mode,
-          })),
+          ...AUTOPLAY_MODES.map((mode) =>
+            choice(mode, (m) => m.commands.autoplay.modes[mode]),
+          ),
         ),
     ),
   category: "music",
   cooldownSeconds: 3,
   requirements: REQ.autoplay,
-  async execute({ interaction, client }) {
+  async execute({ interaction, client, t }) {
     const enabled = interaction.options.getString("state", true) === "on";
     const modeOption = interaction.options.getString("mode");
     const mode = isAutoplayMode(modeOption) ? modeOption : undefined;

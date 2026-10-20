@@ -1,255 +1,258 @@
-# Perry - Bot Discord phát nhạc (TypeScript)
+# Perry - Discord music bot (TypeScript)
 
-Bot Discord đa máy chủ viết bằng TypeScript (discord.js 14) và phát nhạc qua máy chủ âm thanh [Lavalink](https://lavalink.dev) 4.2.2. Phiên bản 1.1 bổ sung lưu trữ bền vững (PostgreSQL + Redis), tự khám phá nhạc (autoplay, radio, bài tương tự) và khôi phục phiên phát sau khi khởi động lại. Phiên bản 1.2 (hiện tại) đóng gói toàn bộ thành image Docker và stack Docker Compose chạy bằng ba lệnh, kèm script cài đặt, cập nhật, sao lưu và chẩn đoán. Bot có cấu trúc module để sau này thêm các nhóm tính năng khác (moderation, leveling, ...).
+**English** | [Tiếng Việt](README.vi.md)
 
-## Triển khai nhanh
+A multi-server Discord bot written in TypeScript (discord.js 14) that plays music through the [Lavalink](https://lavalink.dev) 4.2.2 audio server. Version 1.1 added persistent storage (PostgreSQL + Redis), music discovery (autoplay, radio, similar tracks) and session restore after a restart. Version 1.2 packaged everything as a Docker image and a Docker Compose stack that runs with three commands, plus scripts for setup, updates, backups and diagnostics. Version 1.3 (current) internationalizes the bot: English is the default, Vietnamese can be chosen per server (see [Language](#language)). The bot has a modular structure so other feature groups (moderation, leveling, ...) can be added later.
 
-Từ `git clone` tới bot đang chạy trong ba lệnh, bằng Docker Compose (bot + Lavalink + PostgreSQL + Redis trong một tệp). Mọi lệnh dưới đây đã được chạy thật trong lúc kiểm tra v1.2, trừ những dòng ghi rõ `chưa kiểm chứng`.
+## Quick deploy
 
-### Yêu cầu
+From `git clone` to a running bot in three commands, with Docker Compose (bot + Lavalink + PostgreSQL + Redis in one file). Every command below was actually run while testing v1.2, except lines explicitly marked `not verified`.
 
-- Docker Engine kèm Docker Compose v2 (kiểm tra bằng `docker compose version`), khoảng 2 GB RAM trống. Đã thử với Engine 27.5.1 và Compose 2.32.4 trên macOS (Docker Desktop, arm64).
-- Linux hoặc macOS. Windows: dùng WSL2 (chưa kiểm chứng).
-- Đã tạo ứng dụng bot trên Discord: xem [Tạo ứng dụng bot và lấy token](#tạo-ứng-dụng-bot-và-lấy-token) để có `DISCORD_TOKEN` và `DISCORD_CLIENT_ID`, và [Liên kết mời bot](#liên-kết-mời-bot) để mời bot vào máy chủ.
+### Requirements
 
-### Ba lệnh
+- Docker Engine with Docker Compose v2 (check with `docker compose version`), about 2 GB of free RAM. Tested with Engine 27.5.1 and Compose 2.32.4 on macOS (Docker Desktop, arm64).
+- Linux or macOS. Windows: use WSL2 (not verified).
+- A bot application created on Discord: see [Create the bot application and get the token](#create-the-bot-application-and-get-the-token) to get `DISCORD_TOKEN` and `DISCORD_CLIENT_ID`, and [Invite link](#invite-link) to invite the bot to a server.
+
+### Three commands
 
 ```bash
-git clone <URL-kho-mã-của-bạn> perry && cd perry   # chưa kiểm chứng: kho này chưa có remote nên chưa clone thử được
+git clone <your-repository-URL> perry && cd perry   # not verified: this repository has no remote yet, so cloning was not tested
 ./scripts/setup.sh
-docker compose up -d                                 # hoặc: make up
+docker compose up -d                                 # or: make up
 ```
 
-- `./scripts/setup.sh` hỏi `DISCORD_TOKEN` (nhập ẩn) và `DISCORD_CLIENT_ID`, tự sinh ba mật khẩu ngẫu nhiên cho Lavalink, PostgreSQL và Redis, tạo `.env` với quyền `600`, rồi in liên kết mời bot. Chạy lại bao nhiêu lần cũng được, giá trị đã có không bị ghi đè. Không bao giờ in token hay mật khẩu ra màn hình.
-- `make up` (hay `./scripts/deploy.sh`) build image, chạy stack và **chờ tới khi các dịch vụ khỏe**; nếu không, in 30 dòng log cuối của dịch vụ lỗi. `docker compose up -d` chờ postgres, redis và lavalink khỏe (lần đầu tới ~90 giây) rồi trả về, nhưng không chờ bot đăng nhập Discord; dùng `make up` để chờ cả bot và in log khi lỗi.
-- Lần đầu Lavalink tải 3 plugin nên mất khoảng 30-90 giây. Thời gian build image lần đầu trên máy trắng chưa được đo (lần kiểm tra có sẵn cache lớp).
-- Bot tự chạy migration cơ sở dữ liệu và tự đăng ký lệnh slash khi khởi động (xem [Đăng ký lệnh slash](#đăng-ký-lệnh-slash)).
-- Chạy tự động không hỏi (CI, script): `DISCORD_TOKEN=... DISCORD_CLIENT_ID=... ./scripts/setup.sh --non-interactive`.
-- Dùng `make up` thay vì `docker compose up -d` nếu muốn nhãn phiên bản/commit của image đúng (lệnh thứ hai gắn nhãn `dev`/`unknown`).
+- `./scripts/setup.sh` asks for `DISCORD_TOKEN` (hidden input) and `DISCORD_CLIENT_ID`, generates three random passwords for Lavalink, PostgreSQL and Redis, creates `.env` with mode `600`, then prints the bot invite link. It can be run any number of times; existing values are never overwritten. It never prints the token or passwords.
+- `make up` (or `./scripts/deploy.sh`) builds the image, starts the stack and **waits until the services are healthy**; otherwise it prints the last 30 log lines of the failing service. `docker compose up -d` waits for postgres, redis and lavalink to become healthy (up to ~90 seconds the first time) and then returns, but does not wait for the bot to log in to Discord; use `make up` to also wait for the bot and print logs on failure.
+- The first time, Lavalink downloads 3 plugins, which takes about 30-90 seconds. The first image build time on a clean machine has not been measured (the test run had a warm layer cache).
+- The bot runs the database migrations and registers the slash commands by itself on startup (see [Registering slash commands](#registering-slash-commands)).
+- Unattended runs (CI, scripts): `DISCORD_TOKEN=... DISCORD_CLIENT_ID=... ./scripts/setup.sh --non-interactive`.
+- Use `make up` rather than `docker compose up -d` if you want correct version/commit labels on the image (the latter labels it `dev`/`unknown`).
 
-Sau đó kiểm tra bằng `./scripts/doctor.sh` (hoặc `make doctor`) và xem log bằng `./scripts/logs.sh`.
+Then check with `./scripts/doctor.sh` (or `make doctor`) and view the logs with `./scripts/logs.sh`.
 
-### VPS Ubuntu/Debian từng bước
+### Ubuntu/Debian VPS step by step
 
-Bot chỉ kết nối **đi ra** (Discord, Lavalink nội bộ) nên không cần mở cổng nào vào ngoài SSH. Các bước cài đặt hệ điều hành dưới đây **chưa kiểm chứng** vì chưa thử trên VPS Linux thật:
+The bot only makes **outbound** connections (Discord, internal Lavalink), so no inbound port other than SSH needs to be opened. The operating system setup steps below are **not verified** because they have not been tried on a real Linux VPS:
 
 ```bash
-# 1. Cài Docker Engine + Compose plugin theo hướng dẫn apt chính thức, không dùng curl | sh:
-#    https://docs.docker.com/engine/install/ubuntu/   (hoặc /debian/)          # chưa kiểm chứng
-sudo usermod -aG docker "$USER"    # chưa kiểm chứng; đăng xuất rồi đăng nhập lại để có hiệu lực
-sudo apt-get install -y git        # chưa kiểm chứng
+# 1. Install Docker Engine + the Compose plugin following the official apt instructions, not curl | sh:
+#    https://docs.docker.com/engine/install/ubuntu/   (or /debian/)            # not verified
+sudo usermod -aG docker "$USER"    # not verified; log out and back in for it to take effect
+sudo apt-get install -y git        # not verified
 
-# 2. Tường lửa: chỉ cần SSH (stack này không publish cổng nào)
-sudo ufw allow OpenSSH             # chưa kiểm chứng
-sudo ufw enable                    # chưa kiểm chứng
+# 2. Firewall: only SSH is needed (this stack publishes no ports)
+sudo ufw allow OpenSSH             # not verified
+sudo ufw enable                    # not verified
 
-# 3. Lấy mã nguồn, cấu hình, chạy
-git clone <URL-kho-mã-của-bạn> perry && cd perry   # chưa kiểm chứng
+# 3. Get the source, configure, run
+git clone <your-repository-URL> perry && cd perry   # not verified
 ./scripts/setup.sh
 make up
 ```
 
-Bước 3 (`setup.sh`, `make up`) đã chạy thật trên Docker Desktop; riêng `setup.sh` còn được chạy trong container Debian 12 (bash 5, GNU coreutils, không có `openssl`). Chi tiết từng bước và log mong đợi: [docs/DEPLOY.md](docs/DEPLOY.md).
+Step 3 (`setup.sh`, `make up`) was actually run on Docker Desktop; `setup.sh` was also run in a Debian 12 container (bash 5, GNU coreutils, no `openssl`). Step-by-step details and expected logs: [docs/DEPLOY.md](docs/DEPLOY.md).
 
-### Cập nhật, sao lưu, log và chẩn đoán
+### Updates, backups, logs and diagnostics
 
 ```bash
-./scripts/update.sh        # hoặc: make update. Sao lưu PostgreSQL, git pull --ff-only, build lại, chỉ tạo lại dịch vụ đổi
-./scripts/update.sh --dry-run   # chỉ in các bước, không thay đổi gì
-./scripts/backup.sh        # hoặc: make backup  -> backups/perry-YYYYmmdd-HHMMSS.dump (quyền 600, giữ 14 bản)
-./scripts/restore.sh backups/perry-YYYYmmdd-HHMMSS.dump   # hoặc: make restore FILE=backups/perry-....dump
-./scripts/restore.sh --latest --yes                      # khôi phục bản mới nhất, không hỏi lại
-./scripts/logs.sh bot --tail 100   # hoặc: make logs SERVICE=bot
-./scripts/doctor.sh        # hoặc: make doctor. Bảng PASS/FAIL/WARN; thoát 1 nếu có FAIL
-make ps                    # trạng thái container
-make down                  # dừng stack, GIỮ dữ liệu
+./scripts/update.sh        # or: make update. Backs up PostgreSQL, git pull --ff-only, rebuilds, recreates only changed services
+./scripts/update.sh --dry-run   # only prints the steps, changes nothing
+./scripts/backup.sh        # or: make backup  -> backups/perry-YYYYmmdd-HHMMSS.dump (mode 600, keeps 14)
+./scripts/restore.sh backups/perry-YYYYmmdd-HHMMSS.dump   # or: make restore FILE=backups/perry-....dump
+./scripts/restore.sh --latest --yes                      # restore the newest backup without asking
+./scripts/logs.sh bot --tail 100   # or: make logs SERVICE=bot
+./scripts/doctor.sh        # or: make doctor. PASS/FAIL/WARN table; exits 1 if there is a FAIL
+make ps                    # container status
+make down                  # stop the stack, KEEP the data
 ```
 
-- `update.sh` sao lưu trước khi làm gì khác; nếu `git pull --ff-only` hoặc bước sau đó lỗi, nó in cách quay lại (bản sao lưu, commit trước đó) và không xóa gì. Migration chỉ đi tiến: quay lại mã cũ sau khi lược đồ đã đổi cần khôi phục cả cơ sở dữ liệu.
-- `restore.sh` là thao tác **phá hủy**: nó hỏi bạn gõ `yes` (hoặc cần `--yes`), tự sao lưu trước vào `backups/perry-prerestore-*.dump`, dừng bot, ghi đè dữ liệu PostgreSQL rồi khởi động lại bot. Không có terminal và không có `--yes` thì nó từ chối.
-- Redis **không** nằm trong bản sao lưu: chỉ chứa cooldown, bộ nhớ đệm, snapshot hàng đợi (6 giờ) và hash lệnh slash, tất cả tự tái tạo.
-- `make down` giữ nguyên volume. Không chạy `docker compose down -v` trừ khi muốn xóa sạch dữ liệu PostgreSQL, Redis và cache plugin.
-- Số bản sao lưu giữ lại: `BACKUP_KEEP` trong `.env` (mặc định 14); chỉ các tệp `perry-YYYYmmdd-HHMMSS.dump` bị dọn, tệp `perry-prerestore-*` không bao giờ bị xóa tự động.
-- Các lệnh `make down`, `make ps`, `make restart` gọi thẳng `docker compose`, nên cần `.env` đầy đủ (Compose kiểm tra các biến bắt buộc trên toàn tệp).
+- `update.sh` backs up before doing anything else; if `git pull --ff-only` or a later step fails, it prints how to roll back (the backup, the previous commit) and deletes nothing. Migrations only go forward: going back to old code after the schema has changed requires restoring the database as well.
+- `restore.sh` is a **destructive** operation: it asks you to type `yes` (or needs `--yes`), first backs up to `backups/perry-prerestore-*.dump`, stops the bot, overwrites the PostgreSQL data and then starts the bot again. Without a terminal and without `--yes` it refuses.
+- Redis is **not** included in the backup: it only holds cooldowns, caches, queue snapshots (6 hours) and the slash command hash, all of which are rebuilt automatically.
+- `make down` keeps the volumes. Do not run `docker compose down -v` unless you want to wipe the PostgreSQL, Redis and plugin cache data.
+- Number of backups kept: `BACKUP_KEEP` in `.env` (default 14); only `perry-YYYYmmdd-HHMMSS.dump` files are pruned, `perry-prerestore-*` files are never deleted automatically.
+- `make down`, `make ps` and `make restart` call `docker compose` directly, so they need a complete `.env` (Compose checks the required variables across the whole file).
 
-Xử lý nhanh:
+Quick fixes:
 
-| Triệu chứng                                                       | Cách xử lý                                                                                                                  |
-| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `make up` báo `crash loop` hoặc bot không khỏe                    | `./scripts/doctor.sh`; nếu thấy `Login failed` thì `DISCORD_TOKEN` sai hoặc đã reset: sửa `.env` rồi `./scripts/deploy.sh`. |
-| Bot khởi động lại mỗi 30-60 giây                                  | Token sai: bot chờ 30 giây sau khi đăng nhập thất bại rồi thoát để Docker khởi động lại, tránh dội yêu cầu lên Discord.     |
-| Lavalink chưa `healthy` ở lần chạy đầu                            | Chờ 30-90 giây để tải 3 plugin; xem `./scripts/logs.sh lavalink`.                                                           |
-| Đổi `POSTGRES_PASSWORD` sau lần chạy đầu mà bot không vào được DB | Mật khẩu chỉ có tác dụng khi volume còn trống; đổi bằng `ALTER USER` trong PostgreSQL hoặc khôi phục lại vào volume mới.    |
-| Compose báo thiếu biến `DISCORD_TOKEN`, `LAVALINK_PASSWORD`, ...  | `.env` thiếu hoặc rỗng: chạy `./scripts/setup.sh`.                                                                          |
+| Symptom                                                              | Fix                                                                                                                             |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `make up` reports `crash loop` or the bot is not healthy             | `./scripts/doctor.sh`; if it shows `Login failed`, `DISCORD_TOKEN` is wrong or has been reset: fix `.env`, then `./scripts/deploy.sh`. |
+| The bot restarts every 30-60 seconds                                 | Wrong token: the bot waits 30 seconds after a failed login and then exits so Docker restarts it, to avoid hammering Discord.      |
+| Lavalink is not `healthy` on the first run                           | Wait 30-90 seconds for the 3 plugins to download; see `./scripts/logs.sh lavalink`.                                              |
+| Changed `POSTGRES_PASSWORD` after the first run and the bot cannot reach the DB | The password only applies while the volume is empty; change it with `ALTER USER` in PostgreSQL or restore into a new volume. |
+| Compose reports a missing `DISCORD_TOKEN`, `LAVALINK_PASSWORD`, ...  | `.env` is missing or empty (`<VAR> is not set in .env, run ./scripts/setup.sh`): run `./scripts/setup.sh`.                       |
 
-### Không dùng Docker cho bot
+### Running the bot without Docker
 
-Có thể chạy bot trực tiếp bằng Node.js (>= 22.13), khi đó bạn tự có Lavalink, PostgreSQL và Redis (hoặc dùng [hạ tầng dev](#chạy-hạ-tầng-phát-triển-lavalink-postgresql-redis) bằng Docker Compose). Giữ nguyên các bước ở các mục [Cấu hình `.env`](#cấu-hình-env), [Lưu trữ](#lưu-trữ-postgresql--redis) và [Chạy bot](#chạy-bot):
+You can run the bot directly with Node.js (>= 22.13); you then provide Lavalink, PostgreSQL and Redis yourself (or use the [development infrastructure](#running-the-development-infrastructure-lavalink-postgresql-redis) with Docker Compose). Keep the steps in [Configuring `.env`](#configuring-env), [Storage](#storage-postgresql--redis) and [Running the bot](#running-the-bot):
 
 ```bash
 npm ci
-npm run db:migrate         # hoặc đặt AUTO_MIGRATE=true để bot tự migrate khi khởi động
+npm run db:migrate         # or set AUTO_MIGRATE=true so the bot migrates on startup
 npm run build && npm start
 ```
 
-`AUTO_MIGRATE`, `REGISTER_COMMANDS_ON_START` và `HEARTBEAT_FILE` mặc định **tắt** khi chạy bằng `npm start` (hành vi y như v1.1); chỉ image Docker bật sẵn chúng.
+`AUTO_MIGRATE`, `REGISTER_COMMANDS_ON_START` and `HEARTBEAT_FILE` are **off** by default when running with `npm start` (same behavior as v1.1); only the Docker image turns them on. When upgrading a host install to v1.3, run `npm run db:migrate` before starting the bot (see [Language](#language)).
 
-### Lưu ý bảo mật khi triển khai
+### Security notes for deployment
 
-- Container bot chạy bằng user `node` (uid 1000), hệ tệp gốc chỉ đọc (chỉ `/tmp` ghi được), `cap_drop: ALL`, `no-new-privileges`. Bot không mở cổng HTTP nào.
-- Không dịch vụ nào publish cổng ra máy chủ trong `docker-compose.yml`: Lavalink, PostgreSQL và Redis chỉ nằm trong mạng riêng của Docker (đã kiểm tra `PortBindings` rỗng cho cả 4 container). Đừng tự thêm `ports:` cho chúng.
-- `.env` có quyền `600`; không commit, không dán vào issue hay chat. Nếu lộ token, vào Developer Portal chọn **Reset Token**, sửa `.env` rồi `./scripts/deploy.sh`.
-- Đổi mật khẩu Lavalink/Redis: sửa `.env` rồi `docker compose up -d` (tạo lại container). Mật khẩu PostgreSQL xem bảng trên.
-- Lưu ý: mật khẩu Redis và PostgreSQL nằm trong biến môi trường của container bot (`REDIS_URL`, `DATABASE_URL`) và trong tham số tiến trình của Redis, nên người dùng thuộc nhóm `docker` (tương đương root) đọc được qua `docker inspect`. Chỉ cấp nhóm `docker` cho người tin cậy.
-- Image không chứa `.env`, token hay mật khẩu (đã kiểm tra `docker history` và `docker image inspect`, log của stack).
+- The bot container runs as the `node` user (uid 1000), with a read-only root filesystem (only `/tmp` is writable), `cap_drop: ALL` and `no-new-privileges`. The bot opens no HTTP port.
+- No service publishes a port to the host in `docker-compose.yml`: Lavalink, PostgreSQL and Redis only live on Docker's private networks (`PortBindings` was checked to be empty for all 4 containers). Do not add `ports:` for them.
+- `.env` has mode `600`; do not commit it, and do not paste it into issues or chat. If the token leaks, go to the Developer Portal, choose **Reset Token**, fix `.env` and run `./scripts/deploy.sh`.
+- Changing the Lavalink/Redis password: edit `.env`, then `docker compose up -d` (recreates the containers). For the PostgreSQL password see the table above.
+- Note: the Redis and PostgreSQL passwords are in the bot container's environment variables (`REDIS_URL`, `DATABASE_URL`) and in the Redis process arguments, so members of the `docker` group (equivalent to root) can read them with `docker inspect`. Only give `docker` group membership to trusted people.
+- The image contains no `.env`, token or password (checked with `docker history`, `docker image inspect` and the stack logs).
 
-### Tài liệu chi tiết
+### Detailed documentation
 
-[docs/DEPLOY.md](docs/DEPLOY.md): hướng dẫn VPS đầy đủ, cập nhật và quay lui, sao lưu, `doctor.sh` giải thích, giới hạn tài nguyên, dùng image dựng sẵn từ GHCR (`BOT_IMAGE`), nâng cấp từ stack dev v1.1, danh sách chưa kiểm chứng.
+[docs/DEPLOY.md](docs/DEPLOY.md): full VPS guide, updates and rollback (including upgrading to v1.3), backups, `doctor.sh` explained, resource limits, using a prebuilt image from GHCR (`BOT_IMAGE`), upgrading from the v1.1 dev stack, list of unverified items.
 
-## Tính năng
+## Features
 
-- Phát nhạc từ YouTube, YouTube Music, SoundCloud và một số liên kết trực tiếp (Vimeo, Bandcamp, Twitch, tệp âm thanh `http(s)`), tìm kiếm bằng từ khóa kèm gợi ý tự động (autocomplete).
-- Bộ lệnh điều khiển: phát, tạm dừng, tiếp tục, bỏ qua, phát lại bài trước, dừng, tua, âm lượng, lặp, xáo trộn, quản lý hàng đợi, bộ lọc âm thanh, lời bài hát.
-- Thông báo "Đang phát" có các nút bấm (tạm dừng, bỏ qua, dừng, lặp, xáo trộn, hàng đợi).
-- Hoạt động trên nhiều máy chủ cùng lúc: hàng đợi, cài đặt và bộ hẹn giờ đều tách riêng theo từng máy chủ.
-- Vai trò DJ và cài đặt theo máy chủ qua `/settings`; cài đặt được lưu trong PostgreSQL nên không mất khi khởi động lại.
-- Tự khám phá nhạc: `/autoplay` (tự thêm bài gợi ý khi hết hàng đợi), `/radio` (phát liên tục từ một bài hoặc từ khóa), `/similar` (xem và chọn bài tương tự).
-- Liên kết playlist hoặc YouTube Mix được thêm toàn bộ vào hàng đợi, bắt đầu từ video đã chọn.
-- Khôi phục phiên phát sau khi bot khởi động lại: bot vào lại kênh thoại và phát tiếp hàng đợi.
-- Redis dùng cho cooldown, giới hạn tần suất, bộ nhớ đệm và ảnh chụp (snapshot) hàng đợi; có chế độ suy giảm khi PostgreSQL hoặc Redis không khả dụng.
-- Tự rời kênh thoại khi chỉ còn một mình bot (60 giây) hoặc khi hàng đợi trống quá lâu (3 phút).
-- Mọi thông báo hiển thị cho người dùng bằng tiếng Việt.
+- Plays music from YouTube, YouTube Music, SoundCloud and some direct links (Vimeo, Bandcamp, Twitch, `http(s)` audio files), with keyword search and autocomplete suggestions.
+- Control commands: play, pause, resume, skip, play the previous track again, stop, seek, volume, loop, shuffle, queue management, audio filters, lyrics.
+- A "Now playing" message with buttons (pause, skip, stop, loop, shuffle, queue).
+- Works on many servers at once: queues, settings and timers are all separate per server.
+- DJ role and per-server settings via `/settings`; settings are stored in PostgreSQL so they survive restarts.
+- Music discovery: `/autoplay` (adds suggested tracks when the queue runs out), `/radio` (plays continuously from a track or a query), `/similar` (browse and pick similar tracks).
+- Playlist and YouTube Mix links are added to the queue in full, starting from the selected video.
+- Restores the playback session after the bot restarts: the bot rejoins the voice channel and continues the queue.
+- Redis is used for cooldowns, rate limits, caches and queue snapshots; there is a degraded mode when PostgreSQL or Redis is unavailable.
+- Leaves the voice channel automatically when the bot is alone (60 seconds) or when the queue has been empty for too long (3 minutes).
+- Bilingual: English (default) and Vietnamese, chosen per server with `/settings language` or as the bot default with `DEFAULT_LOCALE` (see [Language](#language)). Logs are always in English.
 
-## Yêu cầu
+## Requirements
 
-- Triển khai bằng Docker (khuyến nghị): chỉ cần Docker Engine với Compose v2; Node.js không cần cài trên máy chủ vì bot được build trong image.
-- Chạy bot trực tiếp hoặc phát triển: Node.js >= 22.13 (khuyến nghị 24 LTS, xem `.nvmrc`) cùng Docker Compose cho hạ tầng (hoặc Java 17+ nếu tự chạy Lavalink không qua Docker). Có thể bỏ PostgreSQL và Redis bằng `STORAGE_DRIVER=memory` (xem phần Lưu trữ).
-- Một tài khoản Discord để tạo ứng dụng bot.
+- Docker deployment (recommended): only Docker Engine with Compose v2 is needed; Node.js does not have to be installed on the server because the bot is built inside the image.
+- Running the bot directly or developing: Node.js >= 22.13 (24 LTS recommended, see `.nvmrc`) plus Docker Compose for the infrastructure (or Java 17+ if you run Lavalink yourself without Docker). PostgreSQL and Redis can be skipped with `STORAGE_DRIVER=memory` (see the Storage section).
+- A Discord account to create the bot application.
 
-## Tạo ứng dụng bot và lấy token
+## Create the bot application and get the token
 
-1. Vào [Discord Developer Portal](https://discord.com/developers/applications), chọn **New Application**.
-2. Tab **General Information**: sao chép **Application ID**. Đây là giá trị `DISCORD_CLIENT_ID`.
-3. Tab **Bot**: chọn **Reset Token** để lấy token, đây là `DISCORD_TOKEN`. Token chỉ hiện một lần, không chia sẻ và không đưa vào git.
-4. Bot chỉ dùng intents `Guilds` và `GuildVoiceStates`. **Không bật** bất kỳ Privileged Gateway Intent nào (Presence, Server Members, Message Content).
-5. Để mời bot vào nhiều máy chủ, bật **Public Bot** trong tab **Bot** (mục này đã được bật mặc định với ứng dụng mới; nếu tắt, chỉ chủ ứng dụng mới mời được bot).
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications) and choose **New Application**.
+2. **General Information** tab: copy the **Application ID**. This is the `DISCORD_CLIENT_ID` value.
+3. **Bot** tab: choose **Reset Token** to get the token; this is `DISCORD_TOKEN`. The token is shown only once; do not share it and do not put it in git.
+4. The bot only uses the `Guilds` and `GuildVoiceStates` intents. **Do not enable** any Privileged Gateway Intent (Presence, Server Members, Message Content).
+5. To invite the bot to many servers, enable **Public Bot** in the **Bot** tab (it is on by default for new applications; if it is off, only the application owner can invite the bot).
 
-## Liên kết mời bot
+## Invite link
 
-Thay `<DISCORD_CLIENT_ID>` bằng Application ID của bạn:
+Replace `<DISCORD_CLIENT_ID>` with your Application ID:
 
 ```
 https://discord.com/oauth2/authorize?client_id=<DISCORD_CLIENT_ID>&scope=bot%20applications.commands&permissions=2150648832
 ```
 
 - Scope: `bot applications.commands`.
-- Quyền (permissions = `2150648832`): View Channels, Send Messages, Embed Links, Connect, Speak, Use Slash Commands.
-- Giá trị `2150648832` được tính bằng `PermissionsBitField` của discord.js (1024 + 2048 + 16384 + 1048576 + 2097152 + 2147483648).
+- Permissions (permissions = `2150648832`): View Channels, Send Messages, Embed Links, Connect, Speak, Use Slash Commands.
+- The value `2150648832` was computed with discord.js `PermissionsBitField` (1024 + 2048 + 16384 + 1048576 + 2097152 + 2147483648).
 
-## Cấu hình `.env`
+## Configuring `.env`
 
-Cách nhanh: `./scripts/setup.sh` tạo `.env` từ `.env.example`, hỏi token và Application ID, tự sinh mật khẩu và điền sẵn `DATABASE_URL` / `REDIS_URL` cho chế độ chạy trên máy host. Chạy lại an toàn (không ghi đè giá trị đã có); khi `.env.example` có khóa mới, script tự thêm vào `.env` hiện có.
+Quick way: `./scripts/setup.sh` creates `.env` from `.env.example`, asks for the token and Application ID, generates the passwords and fills in `DATABASE_URL` / `REDIS_URL` for running on the host. It is safe to re-run (existing values are not overwritten); when `.env.example` gains new keys, the script appends them to the existing `.env` (it prints `Added new key: KEY`).
 
-Cách thủ công:
+Manual way:
 
 ```bash
 cp .env.example .env
-# Chạy 3 lần, mỗi lần dùng kết quả làm LAVALINK_PASSWORD, POSTGRES_PASSWORD và REDIS_PASSWORD
+# Run 3 times and use each result as LAVALINK_PASSWORD, POSTGRES_PASSWORD and REDIS_PASSWORD
 openssl rand -hex 24
 ```
 
-Token, Application ID và mật khẩu trong `.env.example` được để trống có chủ đích: Docker Compose và bot đều từ chối khởi động cho tới khi bạn điền giá trị thật. Nên dùng chuỗi hex (chỉ ký tự `[A-Za-z0-9_-]`) để `DATABASE_URL` và `REDIS_URL` không chứa ký tự cần mã hóa. Khi sửa `.env` bằng tay, đừng để khoảng trắng, dấu nháy, `$`, `#` hay dấu backtick trong giá trị token và mật khẩu.
+The token, Application ID and passwords in `.env.example` are intentionally empty: Docker Compose and the bot both refuse to start until you fill in real values. Prefer hex strings (only `[A-Za-z0-9_-]` characters) so that `DATABASE_URL` and `REDIS_URL` contain no characters that need encoding. When editing `.env` by hand, do not put spaces, quotes, `$`, `#` or backticks in the token and password values.
 
-Chỉnh `.env` (tệp này đã nằm trong `.gitignore`, không bao giờ commit):
+Edit `.env` (the file is already in `.gitignore`; never commit it):
 
-| Biến                          | Bắt buộc | Ý nghĩa                                                                                                                                                                                                                                 |
-| ----------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DISCORD_TOKEN`               | Có       | Token bot.                                                                                                                                                                                                                              |
-| `DISCORD_CLIENT_ID`           | Có       | Application ID.                                                                                                                                                                                                                         |
-| `DEV_GUILD_ID`                | Không    | ID máy chủ dùng để đăng ký lệnh tức thì khi phát triển.                                                                                                                                                                                 |
-| `LAVALINK_HOST`               | Có\*\*   | Địa chỉ Lavalink, mặc định `127.0.0.1`. Chỉ khi bot chạy trên máy host; `docker-compose.yml` tự đặt là `lavalink`.                                                                                                                      |
-| `LAVALINK_PORT`               | Có\*\*   | Cổng Lavalink, mặc định `2333`. Khi chạy host, đây là cổng `docker-compose.dev.yml` publish (chỉ `127.0.0.1`).                                                                                                                          |
-| `LAVALINK_PASSWORD`           | Có       | Mật khẩu dùng chung cho bot và Docker Compose (để trống thì cả hai đều báo lỗi). Chỉ dùng ký tự `[A-Za-z0-9_-]`.                                                                                                                        |
-| `LAVALINK_SECURE`             | Không    | `true` khi Lavalink nằm sau TLS. Với `true`, thư viện yêu cầu cổng `443`. Stack Docker luôn đặt `false`.                                                                                                                                |
-| `LOG_LEVEL`                   | Không    | `fatal`, `error`, `warn`, `info` (mặc định), `debug`, `trace`, `silent`. Stack trace chỉ được ghi ở `debug`/`trace`.                                                                                                                    |
-| `LOG_PRETTY`                  | Không    | `true` để log dễ đọc (pino-pretty) thay vì JSON.                                                                                                                                                                                        |
-| `STORAGE_DRIVER`              | Không    | `persistent` (mặc định: PostgreSQL + Redis) hoặc `memory` (mọi thứ trong bộ nhớ, không lưu gì). Stack Docker luôn dùng `persistent`.                                                                                                    |
-| `DATABASE_URL`                | Có\*\*   | Chuỗi kết nối PostgreSQL khi chạy trên máy host và `persistent`; cũng dùng cho `npm run db:migrate`. Dạng `postgres://perry:<POSTGRES_PASSWORD>@127.0.0.1:<POSTGRES_PORT>/perry`. `docker-compose.yml` tự dựng URL riêng cho container. |
-| `REDIS_URL`                   | Có\*\*   | Chuỗi kết nối Redis khi chạy trên máy host và `persistent`. Dạng `redis://:<REDIS_PASSWORD>@127.0.0.1:<REDIS_PORT>`. `docker-compose.yml` tự dựng URL riêng cho container.                                                              |
-| `POSTGRES_PASSWORD`           | Có\*     | Mật khẩu PostgreSQL, chỉ Docker Compose đọc; phải khớp với `DATABASE_URL`.                                                                                                                                                              |
-| `REDIS_PASSWORD`              | Có\*     | Mật khẩu Redis, chỉ Docker Compose đọc; phải khớp với `REDIS_URL`.                                                                                                                                                                      |
-| `POSTGRES_PORT`               | Không    | Cổng PostgreSQL trên `127.0.0.1` (mặc định `5432`), chỉ `docker-compose.dev.yml` đọc. Đổi nếu bị trùng và sửa `DATABASE_URL` theo.                                                                                                      |
-| `REDIS_PORT`                  | Không    | Cổng Redis trên `127.0.0.1` (mặc định `6379`), chỉ `docker-compose.dev.yml` đọc. Đổi nếu bị trùng và sửa `REDIS_URL` theo.                                                                                                              |
-| `BOT_IMAGE`                   | Không    | Để trống: build image từ mã nguồn. Đặt (ví dụ `ghcr.io/<chủ-sở-hữu>/<kho>:1.2.0`) để `deploy.sh`/`update.sh` pull image dựng sẵn. Chỉ Docker Compose và script đọc.                                                                     |
-| `AUTO_MIGRATE`                | Không    | `true` để bot tự chạy migration khi khởi động (khóa advisory của PostgreSQL chống chạy song song). Mặc định `true` trong image/compose, `false` khi chạy `npm start`.                                                                   |
-| `REGISTER_COMMANDS_ON_START`  | Không    | `true` để bot tự đăng ký lệnh slash khi sẵn sàng, chỉ khi định nghĩa lệnh đổi. Mặc định `true` trong image/compose, `false` khi chạy `npm start`.                                                                                       |
-| `REGISTER_COMMANDS_FORCE`     | Không    | `true` để bỏ qua so sánh hash và luôn đăng ký lại lệnh khi khởi động. Mặc định `false`.                                                                                                                                                 |
-| `BACKUP_KEEP`                 | Không    | Số bản sao lưu PostgreSQL giữ lại khi chạy `scripts/backup.sh` (mặc định `14`).                                                                                                                                                         |
-| `REDIS_KEY_PREFIX`            | Không    | Tiền tố mọi khóa Redis (`[a-z0-9_-]`, tối đa 32 ký tự, mặc định `perry`). Khóa có dạng `<prefix>:v1:...`.                                                                                                                               |
-| `PLAYER_RESTORE`              | Không    | `true` (mặc định) để vào lại kênh thoại và phát tiếp hàng đợi sau khi khởi động lại.                                                                                                                                                    |
-| `PLAY_HISTORY`                | Không    | `true` để ghi mọi bài đã phát (kèm ID người yêu cầu) vào PostgreSQL. Mặc định `false`.                                                                                                                                                  |
-| `PUBSUB_INVALIDATION`         | Không    | `true` để nhiều tiến trình bot dùng chung việc làm mới cài đặt qua Redis pub/sub. Mặc định `false`.                                                                                                                                     |
-| `DISCOVERY_PROVIDERS`         | Không    | Thứ tự nguồn gợi ý, mặc định `ytmix,lastfm,lavasrc,artist`.                                                                                                                                                                             |
-| `LASTFM_API_KEY`              | Không    | Khóa API Last.fm (miễn phí). Để trống thì bỏ qua nguồn `lastfm`.                                                                                                                                                                        |
-| `DISCOVERY_LAVASRC_PREFIX`    | Không    | `dzrec`, `ymrec`, `vkrec` hoặc `qbrec`. Để trống thì bỏ qua nguồn `lavasrc`.                                                                                                                                                            |
-| `DISCOVERY_MIN_DURATION_SEC`  | Không    | Bài gợi ý ngắn hơn giá trị này (giây) bị bỏ qua. Mặc định `60`.                                                                                                                                                                         |
-| `DISCOVERY_MAX_DURATION_SEC`  | Không    | Bài gợi ý dài hơn giá trị này (giây) bị bỏ qua. Mặc định `1200`.                                                                                                                                                                        |
-| `LAVALINK_JAVA_OPTS`          | Không    | Tùy chọn JVM của Lavalink (mặc định `-Xmx1G`), chỉ Docker Compose đọc.                                                                                                                                                                  |
-| `LAVASRC_SPOTIFY_ENABLED`     | Không    | `true` để bật liên kết Spotify, chỉ Docker Compose đọc.                                                                                                                                                                                 |
-| `SPOTIFY_CLIENT_ID`           | Không    | Client ID ứng dụng Spotify.                                                                                                                                                                                                             |
-| `SPOTIFY_CLIENT_SECRET`       | Không    | Client secret ứng dụng Spotify.                                                                                                                                                                                                         |
-| `SPOTIFY_COUNTRY_CODE`        | Không    | Mã quốc gia thị trường Spotify (mặc định `US`).                                                                                                                                                                                         |
-| `YOUTUBE_OAUTH_REFRESH_TOKEN` | Không    | Dùng khi bật OAuth cho YouTube (xem bên dưới).                                                                                                                                                                                          |
-| `YOUTUBE_PO_TOKEN`            | Không    | Dùng khi bật poToken cho YouTube.                                                                                                                                                                                                       |
-| `YOUTUBE_VISITOR_DATA`        | Không    | Đi cùng `YOUTUBE_PO_TOKEN`.                                                                                                                                                                                                             |
+| Variable                      | Required | Meaning                                                                                                                                                                                                                |
+| ----------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DISCORD_TOKEN`               | Yes      | Bot token.                                                                                                                                                                                                             |
+| `DISCORD_CLIENT_ID`           | Yes      | Application ID.                                                                                                                                                                                                        |
+| `DEV_GUILD_ID`                | No       | ID of the server used to register commands instantly during development.                                                                                                                                              |
+| `LAVALINK_HOST`               | Yes\*\*  | Lavalink address, default `127.0.0.1`. Only when the bot runs on the host; `docker-compose.yml` sets it to `lavalink`.                                                                                                 |
+| `LAVALINK_PORT`               | Yes\*\*  | Lavalink port, default `2333`. On the host, this is the port `docker-compose.dev.yml` publishes (on `127.0.0.1` only).                                                                                                 |
+| `LAVALINK_PASSWORD`           | Yes      | Password shared by the bot and Docker Compose (both report an error when it is empty). Use only `[A-Za-z0-9_-]` characters.                                                                                           |
+| `LAVALINK_SECURE`             | No       | `true` when Lavalink is behind TLS. With `true`, the library requires port `443`. The Docker stack always sets `false`.                                                                                                |
+| `LOG_LEVEL`                   | No       | `fatal`, `error`, `warn`, `info` (default), `debug`, `trace`, `silent`. Stack traces are only logged at `debug`/`trace`.                                                                                               |
+| `LOG_PRETTY`                  | No       | `true` for human-readable logs (pino-pretty) instead of JSON.                                                                                                                                                          |
+| `STORAGE_DRIVER`              | No       | `persistent` (default: PostgreSQL + Redis) or `memory` (everything in memory, nothing is stored). The Docker stack always uses `persistent`.                                                                           |
+| `DATABASE_URL`                | Yes\*\*  | PostgreSQL connection string when running on the host with `persistent`; also used by `npm run db:migrate`. Format `postgres://perry:<POSTGRES_PASSWORD>@127.0.0.1:<POSTGRES_PORT>/perry`. `docker-compose.yml` builds its own URL for the container. |
+| `REDIS_URL`                   | Yes\*\*  | Redis connection string when running on the host with `persistent`. Format `redis://:<REDIS_PASSWORD>@127.0.0.1:<REDIS_PORT>`. `docker-compose.yml` builds its own URL for the container.                             |
+| `POSTGRES_PASSWORD`           | Yes\*    | PostgreSQL password, only read by Docker Compose; must match `DATABASE_URL`.                                                                                                                                           |
+| `REDIS_PASSWORD`              | Yes\*    | Redis password, only read by Docker Compose; must match `REDIS_URL`.                                                                                                                                                   |
+| `POSTGRES_PORT`               | No       | PostgreSQL port on `127.0.0.1` (default `5432`), only read by `docker-compose.dev.yml`. Change it on a conflict and update `DATABASE_URL` accordingly.                                                                |
+| `REDIS_PORT`                  | No       | Redis port on `127.0.0.1` (default `6379`), only read by `docker-compose.dev.yml`. Change it on a conflict and update `REDIS_URL` accordingly.                                                                         |
+| `BOT_IMAGE`                   | No       | Empty: build the image from source. Set it (for example `ghcr.io/<owner>/<repo>:1.3.0`) so `deploy.sh`/`update.sh` pull a prebuilt image. Only read by Docker Compose and the scripts.                                |
+| `AUTO_MIGRATE`                | No       | `true` to make the bot run migrations on startup (a PostgreSQL advisory lock prevents concurrent runs). Default `true` in the image/compose, `false` with `npm start`.                                                 |
+| `REGISTER_COMMANDS_ON_START`  | No       | `true` to make the bot register the slash commands when ready, only when the command definitions changed. Default `true` in the image/compose, `false` with `npm start`.                                               |
+| `REGISTER_COMMANDS_FORCE`     | No       | `true` to skip the hash comparison and always re-register the commands on startup. Default `false`.                                                                                                                   |
+| `BACKUP_KEEP`                 | No       | Number of PostgreSQL backups kept by `scripts/backup.sh` (default `14`).                                                                                                                                               |
+| `REDIS_KEY_PREFIX`            | No       | Prefix of every Redis key (`[a-z0-9_-]`, at most 32 characters, default `perry`). Keys look like `<prefix>:v1:...`.                                                                                                   |
+| `PLAYER_RESTORE`              | No       | `true` (default) to rejoin the voice channel and continue the queue after a restart.                                                                                                                                  |
+| `PLAY_HISTORY`                | No       | `true` to record every played track (with the requester's ID) in PostgreSQL. Default `false`.                                                                                                                         |
+| `PUBSUB_INVALIDATION`         | No       | `true` to let several bot processes share settings invalidation through Redis pub/sub. Default `false`.                                                                                                               |
+| `DEFAULT_LOCALE`              | No       | Default bot language (v1.3): `en` (default) or `vi`; empty = `en`. Used for servers that have not chosen a language with `/settings language`, for the bot's presence text and for the reply in direct messages. Any other value makes the bot refuse to start. |
+| `DISCOVERY_PROVIDERS`         | No       | Order of the suggestion providers, default `ytmix,lastfm,lavasrc,artist`.                                                                                                                                             |
+| `LASTFM_API_KEY`              | No       | Last.fm API key (free). Empty means the `lastfm` provider is skipped.                                                                                                                                                 |
+| `DISCOVERY_LAVASRC_PREFIX`    | No       | `dzrec`, `ymrec`, `vkrec` or `qbrec`. Empty means the `lavasrc` provider is skipped.                                                                                                                                  |
+| `DISCOVERY_MIN_DURATION_SEC`  | No       | Suggested tracks shorter than this (seconds) are skipped. Default `60`.                                                                                                                                               |
+| `DISCOVERY_MAX_DURATION_SEC`  | No       | Suggested tracks longer than this (seconds) are skipped. Default `1200`.                                                                                                                                              |
+| `LAVALINK_JAVA_OPTS`          | No       | Lavalink JVM options (default `-Xmx1G`), only read by Docker Compose.                                                                                                                                                 |
+| `LAVASRC_SPOTIFY_ENABLED`     | No       | `true` to enable Spotify links, only read by Docker Compose.                                                                                                                                                          |
+| `SPOTIFY_CLIENT_ID`           | No       | Spotify application Client ID.                                                                                                                                                                                        |
+| `SPOTIFY_CLIENT_SECRET`       | No       | Spotify application client secret.                                                                                                                                                                                    |
+| `SPOTIFY_COUNTRY_CODE`        | No       | Spotify market country code (default `US`).                                                                                                                                                                           |
+| `YOUTUBE_OAUTH_REFRESH_TOKEN` | No       | Used when OAuth is enabled for YouTube (see below).                                                                                                                                                                   |
+| `YOUTUBE_PO_TOKEN`            | No       | Used when poToken is enabled for YouTube.                                                                                                                                                                             |
+| `YOUTUBE_VISITOR_DATA`        | No       | Goes together with `YOUTUBE_PO_TOKEN`.                                                                                                                                                                                |
 
-\* Bắt buộc cho stack Docker (`docker-compose.yml`) và `docker-compose.dev.yml --profile storage`. Với `STORAGE_DRIVER=memory` chạy trên máy host chỉ cần các biến Lavalink.
+\* Required for the Docker stack (`docker-compose.yml`) and for `docker-compose.dev.yml --profile storage`. With `STORAGE_DRIVER=memory` on the host, only the Lavalink variables are needed.
 
-\*\* Chỉ cần khi bot chạy trực tiếp trên máy host (`npm run dev` / `npm start`). `docker-compose.yml` bỏ qua các biến này và tự đặt host, URL theo tên dịch vụ trong mạng riêng của Docker.
+\*\* Only needed when the bot runs directly on the host (`npm run dev` / `npm start`). `docker-compose.yml` ignores these variables and sets the hosts and URLs from the service names on Docker's private network.
 
-Ngoài ra image Docker đặt sẵn `HEARTBEAT_FILE=/tmp/perry-heartbeat`: bot ghi dấu thời gian vào tệp này mỗi 15 giây khi đã kết nối Discord, và `HEALTHCHECK` của image đọc nó (`node dist/healthcheck.js`, tệp phải mới hơn 60 giây). Biến này không cần đặt trong `.env`; để trống thì bot không ghi tệp nào.
+In addition, the Docker image presets `HEARTBEAT_FILE=/tmp/perry-heartbeat`: the bot writes a timestamp to this file every 15 seconds while connected to Discord, and the image's `HEALTHCHECK` reads it (`node dist/healthcheck.js`; the file must be newer than 60 seconds). This variable does not need to be set in `.env`; when it is empty the bot writes no file.
 
-## Chạy hạ tầng phát triển (Lavalink, PostgreSQL, Redis)
+## Running the development infrastructure (Lavalink, PostgreSQL, Redis)
 
-Để chạy bot trên máy host bằng `npm run dev` (hoặc `npm start`), dùng `docker-compose.dev.yml`: chỉ gồm Lavalink, PostgreSQL và Redis (không có bot), cổng được publish trên `127.0.0.1`. Tệp riêng này tồn tại vì Docker Compose kiểm tra các biến bắt buộc (`${VAR:?}`) trên toàn tệp, nên không thể vừa chạy riêng Lavalink vừa giữ kiểm tra mật khẩu PostgreSQL/Redis trong `docker-compose.yml`.
+To run the bot on the host with `npm run dev` (or `npm start`), use `docker-compose.dev.yml`: it only contains Lavalink, PostgreSQL and Redis (no bot), with ports published on `127.0.0.1`. This separate file exists because Docker Compose checks the required variables (`${VAR:?}`) across the whole file, so it is not possible to run Lavalink alone while keeping the PostgreSQL/Redis password checks in `docker-compose.yml`.
 
 ```bash
-# Chỉ Lavalink (STORAGE_DRIVER=memory): .env chỉ cần LAVALINK_PASSWORD
-docker compose -f docker-compose.dev.yml up -d lavalink        # hoặc: npm run dev:lavalink
+# Lavalink only (STORAGE_DRIVER=memory): .env only needs LAVALINK_PASSWORD
+docker compose -f docker-compose.dev.yml up -d lavalink        # or: npm run dev:lavalink
 
 # Lavalink + PostgreSQL + Redis
 make dev-infra                                                  # = docker compose -f docker-compose.dev.yml --profile storage up -d
-docker compose -f docker-compose.dev.yml logs -f lavalink       # hoặc: npm run lavalink:logs
+docker compose -f docker-compose.dev.yml logs -f lavalink       # or: npm run lavalink:logs
 
-# Tạo bảng trong PostgreSQL rồi chạy bot trên máy host
+# Create the tables in PostgreSQL, then run the bot on the host
 npm run db:migrate
-npm run dev                                                     # chưa kiểm chứng trong v1.2 (chỉ `npm start` được thử)
+npm run dev                                                     # not verified in v1.2 (only `npm start` was tried)
 
-make dev-infra-down                                             # dừng, giữ dữ liệu
+make dev-infra-down                                             # stop, keep the data
 ```
 
-- Chế độ chỉ-Lavalink (memory) không còn đòi `POSTGRES_PASSWORD` / `REDIS_PASSWORD`; với `--profile storage`, thiếu hai mật khẩu này thì container Redis dừng với thông báo tiếng Việt trong `docker compose logs redis`, còn PostgreSQL từ chối khởi tạo volume mới khi thiếu mật khẩu.
-- Lần đầu Lavalink tải 3 plugin (YouTube, LavaSrc, LavaLyrics) vào volume có tên `lavalink-plugins`, mất khoảng 30-90 giây. Một dịch vụ `lavalink-init` chạy một lần để chuyển quyền sở hữu volume cho uid 322 của Lavalink, nên bước `sudo chown -R 322:322 lavalink/plugins` của v1.1 không còn cần nữa (kể cả trên Linux).
-- Khi sẵn sàng, `docker compose -f docker-compose.dev.yml ps` báo `healthy`.
-- Cổng chỉ bind vào `127.0.0.1` (`LAVALINK_PORT`, `POSTGRES_PORT`, `REDIS_PORT` trong `.env`). Không mở các cổng này ra internet.
-- Dừng: `make dev-infra-down` (giữ dữ liệu); thêm `-v` vào lệnh `docker compose ... down` sẽ xóa luôn volume PostgreSQL, Redis và cache plugin.
-- Thay đổi `lavalink/application.yml` cần `docker compose -f docker-compose.dev.yml restart lavalink`.
-- Tệp này dùng project `perry-lavalink` và tên volume/mạng của v1.1, nên dữ liệu dev cũ vẫn được gắn lại. Cache plugin trước đây là thư mục `lavalink/plugins/` nay là volume, nên plugin tải lại một lần. Stack production (`docker-compose.yml`, project `perry`) có volume riêng; muốn chuyển dữ liệu dev sang production, xem [docs/DEPLOY.md](docs/DEPLOY.md).
-- Hai tệp compose phải dùng cùng tag image Lavalink/PostgreSQL/Redis; CI so sánh điều này.
+- The Lavalink-only (memory) mode no longer requires `POSTGRES_PASSWORD` / `REDIS_PASSWORD`; with `--profile storage`, if these two passwords are missing the Redis container stops with `REDIS_PASSWORD is not set in .env (REDIS_PASSWORD is empty), run ./scripts/setup.sh` in `docker compose logs redis`, and PostgreSQL refuses to initialize a new volume without a password.
+- The first time, Lavalink downloads 3 plugins (YouTube, LavaSrc, LavaLyrics) into a named volume `lavalink-plugins`, which takes about 30-90 seconds. A one-shot `lavalink-init` service hands the volume over to Lavalink's uid 322, so the v1.1 step `sudo chown -R 322:322 lavalink/plugins` is no longer needed (on Linux too).
+- When ready, `docker compose -f docker-compose.dev.yml ps` reports `healthy`.
+- Ports only bind to `127.0.0.1` (`LAVALINK_PORT`, `POSTGRES_PORT`, `REDIS_PORT` in `.env`). Do not expose these ports to the internet.
+- Stop: `make dev-infra-down` (keeps the data); adding `-v` to a `docker compose ... down` command also deletes the PostgreSQL, Redis and plugin cache volumes.
+- Changes to `lavalink/application.yml` need `docker compose -f docker-compose.dev.yml restart lavalink`.
+- This file uses the `perry-lavalink` project and the v1.1 volume/network names, so old dev data is reattached. The plugin cache used to be the `lavalink/plugins/` directory and is now a volume, so the plugins are downloaded once more. The production stack (`docker-compose.yml`, project `perry`) has its own volumes; to move dev data to production, see [docs/DEPLOY.md](docs/DEPLOY.md).
+- Both compose files must use the same Lavalink/PostgreSQL/Redis image tags; CI compares them.
 
-### Cấu hình plugin YouTube
+### YouTube plugin configuration
 
-Lavalink dùng plugin [youtube-source](https://github.com/lavalink-devs/youtube-source) thay cho nguồn YouTube tích hợp sẵn. Danh sách client được cấu hình trong `lavalink/application.yml` (mục `plugins.youtube.clients`; `WEB` phải đứng trước `IOS`).
+Lavalink uses the [youtube-source](https://github.com/lavalink-devs/youtube-source) plugin instead of the built-in YouTube source. The client list is configured in `lavalink/application.yml` (`plugins.youtube.clients`; `WEB` must come before `IOS`).
 
-YouTube thường xuyên chặn máy chủ/IP trung tâm dữ liệu. Nếu gặp lỗi kiểu "Sign in to confirm you're not a bot", hãy dùng **tài khoản phụ** (tuyệt đối không dùng tài khoản chính) và thử một trong các cách sau, tất cả đều có sẵn dạng chú thích trong `lavalink/application.yml`:
+YouTube often blocks data-center servers/IPs. If you get an error like "Sign in to confirm you're not a bot", use a **secondary account** (never your main account) and try one of the following; all of them are already present as comments in `lavalink/application.yml`:
 
-- **OAuth**: bỏ chú thích khối `oauth`, thêm client `TV` vào `clients`, khởi động lại rồi làm theo mã hiển thị trong `docker compose logs lavalink`. Sau khi đăng nhập thành công, log in ra refresh token; lưu vào `YOUTUBE_OAUTH_REFRESH_TOKEN` trong `.env`.
-- **poToken + visitorData**: bỏ chú thích khối `pot`, điền `YOUTUBE_PO_TOKEN` và `YOUTUBE_VISITOR_DATA` trong `.env`. Không dùng cùng lúc với OAuth.
-- Sau khi sửa `.env` hoặc `lavalink/application.yml` cho các cách trên, chạy `docker compose up -d` để Compose nạp lại biến môi trường cho container (`docker compose restart` không nạp lại `.env`). Với hạ tầng dev, thêm `-f docker-compose.dev.yml` vào các lệnh `docker compose` trong mục này.
-- **Cookies** và các lựa chọn khác: xem tài liệu của [youtube-source](https://github.com/lavalink-devs/youtube-source).
+- **OAuth**: uncomment the `oauth` block, add the `TV` client to `clients`, restart and follow the code shown in `docker compose logs lavalink`. After a successful sign-in, the log prints a refresh token; store it in `YOUTUBE_OAUTH_REFRESH_TOKEN` in `.env`.
+- **poToken + visitorData**: uncomment the `pot` block and fill in `YOUTUBE_PO_TOKEN` and `YOUTUBE_VISITOR_DATA` in `.env`. Do not combine it with OAuth.
+- After editing `.env` or `lavalink/application.yml` for the options above, run `docker compose up -d` so Compose reloads the container's environment (`docker compose restart` does not reload `.env`). With the dev infrastructure, add `-f docker-compose.dev.yml` to the `docker compose` commands in this section.
+- **Cookies** and other options: see the [youtube-source](https://github.com/lavalink-devs/youtube-source) documentation.
 
-Phiên bản plugin: cấu hình đang ghim một bản snapshot (commit `2be8e542...`). Nếu bản này lỗi, quay về bản ổn định 1.18.2 bằng cách thay mục đầu tiên trong `lavalink.plugins` thành:
+Plugin version: the configuration pins a snapshot build (commit `2be8e542...`). If that build breaks, go back to the stable 1.18.2 release by replacing the first entry in `lavalink.plugins` with:
 
 ```yaml
 - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.2"
@@ -258,311 +261,342 @@ Phiên bản plugin: cấu hình đang ghim một bản snapshot (commit `2be8e5
 
 ### Spotify (LavaSrc)
 
-Liên kết Spotify được LavaSrc phân giải rồi tìm bản phát được trên YouTube. Để bật:
+Spotify links are resolved by LavaSrc, which then finds a playable version on YouTube. To enable it:
 
-1. Tạo ứng dụng tại [Spotify for Developers](https://developer.spotify.com/dashboard) và lấy Client ID, Client Secret.
-2. Trong `.env`: `LAVASRC_SPOTIFY_ENABLED=true`, `SPOTIFY_CLIENT_ID=...`, `SPOTIFY_CLIENT_SECRET=...`, `SPOTIFY_COUNTRY_CODE=...`.
-3. `docker compose up -d` lại để áp dụng.
+1. Create an application at [Spotify for Developers](https://developer.spotify.com/dashboard) and get the Client ID and Client Secret.
+2. In `.env`: `LAVASRC_SPOTIFY_ENABLED=true`, `SPOTIFY_CLIENT_ID=...`, `SPOTIFY_CLIENT_SECRET=...`, `SPOTIFY_COUNTRY_CODE=...`.
+3. Run `docker compose up -d` again to apply it.
 
-Khi chưa bật, liên kết Spotify sẽ bị từ chối với thông báo "Nguồn nhạc này chưa được bật trên bot".
+While it is not enabled, Spotify links are rejected with the message "This music source is not enabled on the bot."
 
-## Lưu trữ (PostgreSQL + Redis)
+## Storage (PostgreSQL + Redis)
 
-`STORAGE_DRIVER` chọn cách lưu dữ liệu:
+`STORAGE_DRIVER` selects how data is stored:
 
-- `persistent` (mặc định): PostgreSQL + Redis. Trong Docker, bot tự migrate khi khởi động (`AUTO_MIGRATE=true`, có khóa advisory nên khởi động song song không giẫm chân nhau; chờ PostgreSQL sẵn sàng tối đa 10 lần cách nhau 3 giây, sau đó ghi một dòng lỗi và chạy ở chế độ suy giảm). Chạy trên máy host thì cần `DATABASE_URL`, `REDIS_URL` và `npm run db:migrate` (hoặc `AUTO_MIGRATE=true`). ORM: Drizzle; thư mục `drizzle/` chứa các migration SQL đã sinh, không sửa tay.
-- `memory`: hành vi như v1, mọi thứ nằm trong tiến trình bot. Không lưu cài đặt, không có snapshot hay khôi phục phiên phát. Chỉ dùng khi chạy trên máy host; stack Docker luôn dùng `persistent`. Với `memory`, hash lệnh slash cũng nằm trong tiến trình nên lệnh được đăng ký lại ở mỗi lần khởi động.
+- `persistent` (default): PostgreSQL + Redis. In Docker, the bot migrates on startup (`AUTO_MIGRATE=true`, with an advisory lock so parallel starts do not step on each other; it waits for PostgreSQL up to 10 times, 3 seconds apart, then logs one error line and runs in degraded mode). On the host you need `DATABASE_URL`, `REDIS_URL` and `npm run db:migrate` (or `AUTO_MIGRATE=true`). ORM: Drizzle; the `drizzle/` directory contains the generated SQL migrations (`0000_init.sql`, `0001_guild_language.sql`), do not edit them by hand.
+- `memory`: v1 behavior, everything lives inside the bot process. No settings are stored, there are no snapshots and no session restore. Only for running on the host; the Docker stack always uses `persistent`. With `memory`, the slash command hash is also in-process, so the commands are re-registered on every start.
 
-Khởi động nhanh trên máy host (hạ tầng dev, xem mục trên):
+Quick start on the host (dev infrastructure, see the section above):
 
 ```bash
-# điền POSTGRES_PASSWORD, REDIS_PASSWORD, DATABASE_URL, REDIS_URL trong .env (./scripts/setup.sh làm giúp)
+# fill in POSTGRES_PASSWORD, REDIS_PASSWORD, DATABASE_URL, REDIS_URL in .env (./scripts/setup.sh does it for you)
 make dev-infra
 npm run db:migrate
 npm run build && npm start
 ```
 
-Dữ liệu được lưu ở đâu:
+Where data is stored:
 
-| Dữ liệu                                               | Nơi lưu                        | Thời hạn                                               |
-| ----------------------------------------------------- | ------------------------------ | ------------------------------------------------------ |
-| Cài đặt máy chủ (DJ, âm lượng, autoplay, ...)         | PostgreSQL (`guild_settings`)  | Vĩnh viễn; bộ nhớ đệm Redis 1 giờ, cache nội bộ 5 giây |
-| Lịch sử phát (chỉ khi `PLAY_HISTORY=true`)            | PostgreSQL (`play_history`)    | Vĩnh viễn                                              |
-| Snapshot hàng đợi để khôi phục                        | Redis                          | 6 giờ                                                  |
-| Bài đã phát gần đây (để autoplay không lặp)           | Redis (tối đa 400 mục/máy chủ) | 6 giờ                                                  |
-| Cooldown lệnh, giới hạn tần suất                      | Redis                          | Vài giây tới 1 giờ                                     |
-| Bộ nhớ đệm autocomplete và danh sách Last.fm          | Redis                          | 60 giây / 6 giờ                                        |
-| Trạng thái `/radio`, bộ hẹn giờ, tin nhắn "Đang phát" | Chỉ trong bộ nhớ               | Mất khi bot dừng                                       |
+| Data                                                   | Stored in                      | Lifetime                                           |
+| ------------------------------------------------------ | ------------------------------ | -------------------------------------------------- |
+| Server settings (DJ, volume, autoplay, language, ...)  | PostgreSQL (`guild_settings`)  | Permanent; Redis cache 1 hour, in-process cache 5 seconds |
+| Play history (only with `PLAY_HISTORY=true`)           | PostgreSQL (`play_history`)    | Permanent                                          |
+| Queue snapshot for restore                             | Redis                          | 6 hours                                            |
+| Recently played tracks (so autoplay does not repeat)   | Redis (at most 400 per server) | 6 hours                                            |
+| Command cooldowns, rate limits                         | Redis                          | A few seconds to 1 hour                            |
+| Autocomplete cache and Last.fm lists                   | Redis                          | 60 seconds / 6 hours                               |
+| `/radio` state, timers, "Now playing" messages         | Memory only                    | Lost when the bot stops                            |
 
-Mọi khóa Redis có tiền tố `REDIS_KEY_PREFIX` và đều có TTL. Các bảng `playlists` và `playlist_tracks` đã được tạo sẵn cho tính năng sau này, hiện chưa dùng.
+Every Redis key has the `REDIS_KEY_PREFIX` prefix and a TTL. The `playlists` and `playlist_tracks` tables are already created for a future feature and are not used yet.
 
-Lưu ý khi chạy:
+Operational notes:
 
-- **Mật khẩu**: dùng `openssl rand -hex 24` cho `POSTGRES_PASSWORD` và `REDIS_PASSWORD`. Compose từ chối khởi động hai dịch vụ này khi thiếu mật khẩu.
-- **Trùng cổng**: nếu `5432` hoặc `6379` đã bị dùng, đặt `POSTGRES_PORT` / `REDIS_PORT` khác trong `.env` và sửa `DATABASE_URL` / `REDIS_URL` cho khớp.
-- **PostgreSQL 18**: image mới lưu dữ liệu dưới `/var/lib/postgresql/<phiên bản>/docker`, nên volume được mount tại `/var/lib/postgresql`. Nếu bạn dùng volume cũ của phiên bản trước, không mount lại trực tiếp vào thư mục này.
-- **Giấy phép Redis**: image `redis` 8.x dùng giấy phép RSALv2/SSPLv1/AGPLv3 (tùy chọn). Nếu cần giấy phép mã nguồn mở thuần, có thể thay bằng [Valkey](https://valkey.io), tương thích giao thức; chỉ cần đổi image trong `docker-compose.yml` và giữ nguyên `REDIS_URL`.
-- **Chế độ suy giảm**: khi PostgreSQL hoặc Redis không kết nối được, lệnh vẫn chạy. Bot ghi đúng một dòng log lỗi cho mỗi đợt sự cố, dùng cài đặt đã biết gần nhất (hoặc mặc định), giữ ghi chép đang chờ trong bộ nhớ rồi tự thử kết nối lại (1, 2, 5, 10, 30, 60 giây). Khi hồi phục có một dòng log `recovered`, các thay đổi đang chờ được ghi vào PostgreSQL. Nếu chưa chạy `npm run db:migrate`, log nhắc chạy lệnh này và bot ở chế độ suy giảm cho tới khi migrate xong. Trong lúc Redis ngừng, cooldown chỉ có hiệu lực trong từng tiến trình.
-- **Nhiều tiến trình**: đặt `PUBSUB_INVALIDATION=true` để các tiến trình làm mới cài đặt ngay khi một tiến trình khác thay đổi.
-- Bot rời một máy chủ thì cài đặt, snapshot và danh sách bài gần đây của máy chủ đó bị xóa.
+- **Passwords**: use `openssl rand -hex 24` for `POSTGRES_PASSWORD` and `REDIS_PASSWORD`. Compose refuses to start these two services without a password.
+- **Port conflicts**: if `5432` or `6379` is already in use, set a different `POSTGRES_PORT` / `REDIS_PORT` in `.env` and update `DATABASE_URL` / `REDIS_URL` to match.
+- **PostgreSQL 18**: the new image stores data under `/var/lib/postgresql/<version>/docker`, so the volume is mounted at `/var/lib/postgresql`. If you use an old volume from a previous version, do not mount it directly into this directory.
+- **Redis license**: the `redis` 8.x image uses the RSALv2/SSPLv1/AGPLv3 licenses (your choice). If you need a pure open-source license, you can switch to [Valkey](https://valkey.io), which is protocol compatible; just change the image in `docker-compose.yml` and keep `REDIS_URL`.
+- **Degraded mode**: when PostgreSQL or Redis cannot be reached, commands keep working. The bot logs exactly one error line per outage, uses the last known settings (or the defaults), keeps pending writes in memory and retries the connection by itself (1, 2, 5, 10, 30, 60 seconds). On recovery it logs one `recovered` line and the pending changes are written to PostgreSQL. If `npm run db:migrate` has not been run, the log says to run it (`Database schema is missing or outdated. Run "npm run db:migrate" and restart the bot`) and the bot stays in degraded mode until the migration is done. While Redis is down, cooldowns only apply within each process.
+- **Multiple processes**: set `PUBSUB_INVALIDATION=true` so processes refresh settings as soon as another process changes them.
+- When the bot leaves a server, that server's settings, snapshot and recent-tracks list are deleted.
 
-### Khôi phục sau khi khởi động lại
+### Restore after restart
 
-Khi `PLAYER_RESTORE=true`, bot lưu ảnh chụp hàng đợi (bài đang phát, vị trí, hàng đợi tối đa 200 bài, âm lượng, chế độ lặp, kênh) vào Redis. Sau khi khởi động lại và kết nối được Lavalink, bot lần lượt (cách nhau 300 ms) vào lại kênh thoại và phát tiếp.
+With `PLAYER_RESTORE=true`, the bot saves a queue snapshot (current track, position, up to 200 queued tracks, volume, loop mode, channels) to Redis. After a restart, once connected to Lavalink, the bot rejoins the voice channels one by one (300 ms apart) and continues playing.
 
-- Chỉ khôi phục khi vẫn còn ít nhất một người thật trong kênh thoại và bot còn đủ quyền; nếu không, snapshot bị bỏ.
-- Snapshot được ghi sau khoảng 3 giây kể từ thay đổi cuối (tối đa 15 giây), kèm nhịp 20 giây khi đang phát. Nếu bot bị sập đột ngột, vị trí phát có thể lệch vài giây.
-- Snapshot chỉ được giữ khi bot tắt êm (SIGINT/SIGTERM) hoặc sập. Dừng bằng `/stop`, `/leave`, hàng đợi hết hoặc bot bị đuổi sẽ xóa snapshot. Snapshot tự hết hạn sau 6 giờ.
-- **Giới hạn**: nếu việc xóa snapshot thất bại vì Redis đang ngừng, bot ghi nhớ và xóa lại khi Redis hồi phục (trong cùng tiến trình; trong lúc chờ, snapshot đó bị ẩn khỏi việc khôi phục). Nếu bot khởi động lại **trong lúc Redis vẫn ngừng**, bản ghi nhớ này mất và một phiên đã kết thúc có thể vẫn được khôi phục trong vòng 6 giờ của TTL; điều kiện còn ít nhất một người thật trong kênh thoại là lớp bảo vệ còn lại.
-- Trạng thái `/radio` không được khôi phục. Mất node Lavalink khi bot vẫn chạy cũng không khôi phục (bot chỉ tạo lại kết nối).
-- Chế độ `memory` không có khôi phục.
+- It only restores when at least one real person is still in the voice channel and the bot still has the required permissions; otherwise the snapshot is dropped.
+- The snapshot is written about 3 seconds after the last change (at most 15 seconds), plus a 20-second heartbeat while playing. If the bot crashes abruptly, the playback position may be off by a few seconds.
+- The snapshot is only kept when the bot shuts down gracefully (SIGINT/SIGTERM) or crashes. Stopping with `/stop`, `/leave`, the queue ending or the bot being kicked deletes the snapshot. Snapshots expire after 6 hours.
+- **Limitation**: if deleting a snapshot fails because Redis is down, the bot remembers it and deletes it again when Redis recovers (within the same process; meanwhile that snapshot is hidden from restore). If the bot restarts **while Redis is still down**, this memory is lost and a session that already ended may still be restored within the 6-hour TTL; the requirement that at least one real person is in the voice channel is the remaining safeguard.
+- `/radio` state is not restored. Losing the Lavalink node while the bot keeps running is not restored either (the bot only re-establishes the connection).
+- The `memory` mode has no restore.
 
-## Tự khám phá nhạc
+## Music discovery
 
-- **Autoplay** (`/autoplay state:on`): khi hàng đợi hết, bot tự thêm các bài gợi ý. `mode:related` (mặc định) gợi ý theo bài vừa phát; `mode:seed` ưu tiên bài do người dùng yêu cầu gần nhất. Cần có người trong kênh thoại. Tối đa 30 lần bổ sung mỗi giờ cho mỗi máy chủ; không tìm thấy gì thì bot báo một lần rồi im lặng cho tới khi có `/play`, `/radio` hoặc `/autoplay on`.
-- **Radio** (`/radio query`): nhập liên kết hoặc từ khóa; bot phát và tự bổ sung bài liên quan mỗi khi hàng đợi gần hết. Dừng bằng `/stop`.
-- **Similar** (`/similar`): hiển thị tối đa 25 bài tương tự với bài đang phát (embed 10 bài đầu); chọn bài trong menu hoặc bấm thêm tất cả. Chỉ người gọi lệnh dùng được, hết hạn sau 120 giây không thao tác.
-- Mỗi máy chủ tối đa 60 lượt khám phá mỗi giờ. Bài gợi ý ngoài khoảng `DISCOVERY_MIN_DURATION_SEC`..`DISCOVERY_MAX_DURATION_SEC`, bài trùng với hàng đợi hoặc vừa phát, và livestream đều bị loại; cùng một nghệ sĩ không xuất hiện quá 2 bài liên tiếp.
+- **Autoplay** (`/autoplay state:on`): when the queue runs out, the bot adds suggested tracks by itself. `mode:related` (default) suggests based on the track that just played; `mode:seed` favors the latest track a user requested. Someone must be in the voice channel. At most 30 refills per hour per server; when nothing is found the bot says so once and then stays quiet until `/play`, `/radio` or `/autoplay on`.
+- **Radio** (`/radio query`): enter a link or a query; the bot plays it and keeps adding related tracks whenever the queue is almost empty. Stop it with `/stop`.
+- **Similar** (`/similar`): shows up to 25 tracks similar to the current track (the embed lists the first 10); pick tracks in the menu or press add all. Only the user who ran the command can use it; it expires after 120 seconds without interaction.
+- Each server gets at most 60 discovery runs per hour. Suggested tracks outside `DISCOVERY_MIN_DURATION_SEC`..`DISCOVERY_MAX_DURATION_SEC`, tracks that duplicate the queue or were just played, and livestreams are all filtered out; the same artist never appears more than 2 tracks in a row.
 
-### Chuỗi nguồn gợi ý
+### Suggestion provider chain
 
-Thứ tự mặc định (đổi bằng `DISCOVERY_PROVIDERS`); nguồn nào đạt từ 3 bài hợp lệ trở lên thì dùng và dừng, nguồn cho kết quả ít hơn chỉ được dùng khi không nguồn sau nào đạt:
+Default order (change it with `DISCOVERY_PROVIDERS`); the first provider that yields 3 or more valid tracks is used and the chain stops; a provider with fewer results is only used when no later provider does better:
 
-1. `ytmix`: YouTube Mix (`list=RD<videoId>`) của bài hiện tại, chỉ với bài từ YouTube.
-2. `lastfm`: `track.getSimilar` của Last.fm rồi tìm từng bài trên YouTube. Cần `LASTFM_API_KEY` (đăng ký miễn phí tại [last.fm/api/account/create](https://www.last.fm/api/account/create)). Khóa sai (lỗi 10 hoặc 26) thì tắt nguồn này tới khi bot khởi động lại, ghi một dòng cảnh báo.
-3. `lavasrc`: gợi ý của LavaSrc qua tiền tố `dzrec` (Deezer), `ymrec` (Yandex Music), `vkrec` (VK Music) hoặc `qbrec` (Qobuz). Cần đặt `DISCOVERY_LAVASRC_PREFIX` **và** bật nguồn tương ứng cùng thông tin xác thực trong `lavalink/application.yml`. Không bật Deezer khi chưa có master key: Lavalink sẽ không khởi động được.
-4. `artist`: tìm theo tên nghệ sĩ trên YouTube, dùng làm phương án cuối.
+1. `ytmix`: the YouTube Mix (`list=RD<videoId>`) of the current track, only for YouTube tracks.
+2. `lastfm`: Last.fm `track.getSimilar`, then each track is looked up on YouTube. Needs `LASTFM_API_KEY` (free sign-up at [last.fm/api/account/create](https://www.last.fm/api/account/create)). A wrong key (error 10 or 26) disables this provider until the bot restarts and logs one warning line.
+3. `lavasrc`: LavaSrc recommendations through the `dzrec` (Deezer), `ymrec` (Yandex Music), `vkrec` (VK Music) or `qbrec` (Qobuz) prefix. Needs `DISCOVERY_LAVASRC_PREFIX` **and** the matching source enabled with credentials in `lavalink/application.yml`. Do not enable Deezer without a master key: Lavalink will fail to start.
+4. `artist`: search by artist name on YouTube, used as the last resort.
 
-Spotify không được dùng để gợi ý: Spotify đã ngừng cung cấp endpoint gợi ý cho ứng dụng mới. Spotify vẫn dùng được để phát liên kết (xem phần Spotify).
+Spotify is not used for suggestions: Spotify stopped offering the recommendations endpoint to new applications. Spotify links can still be played (see the Spotify section).
 
-### Playlist và YouTube Mix
+### Playlists and YouTube Mix
 
-- Liên kết playlist hoặc Mix: thêm toàn bộ bài vào hàng đợi (tối đa 300 bài mỗi lần, hàng đợi tối đa 1000 bài). Nếu liên kết trỏ tới một video trong playlist (`watch?v=...&list=...`), danh sách được xoay để bắt đầu từ video đó và vẫn thêm đủ các bài còn lại.
-- Bài trùng với hàng đợi hoặc trùng trong chính danh sách bị bỏ qua và được báo trong phản hồi.
-- Liên kết rút gọn `youtu.be/<id>?list=...` giờ được hiểu như liên kết đầy đủ (trước đây chỉ thêm đúng một bài).
-- Liên kết một bài và tìm kiếm bằng từ khóa không đổi: từ khóa chỉ phát kết quả khớp nhất.
+- Playlist or Mix link: every track is added to the queue (at most 300 tracks per request, queue limit 1000 tracks). If the link points to a video inside a playlist (`watch?v=...&list=...`), the list is rotated to start from that video and the remaining tracks are still added.
+- Tracks that duplicate the queue or appear twice in the list itself are skipped and reported in the reply.
+- Short links `youtu.be/<id>?list=...` are now treated like full links (previously only one track was added).
+- Single-track links and keyword searches are unchanged: a query only plays the best match.
 
-## Đăng ký lệnh slash
+## Registering slash commands
 
 ```bash
-# Phát triển: đăng ký tức thì vào máy chủ DEV_GUILD_ID (đặt trong .env)
+# Development: register instantly in the DEV_GUILD_ID server (set in .env)
 npm run deploy-commands
 
-# Đăng ký toàn cầu (mất tới ~1 giờ để hiển thị ở mọi máy chủ)
+# Register globally (can take up to ~1 hour to show up in every server)
 npm run deploy-commands -- --global
 
-# Xóa lệnh đã đăng ký riêng trong máy chủ dev
+# Remove the commands registered in the dev server only
 npm run deploy-commands -- --clear-dev
 ```
 
-- **Tự đăng ký khi khởi động** (`REGISTER_COMMANDS_ON_START`, bật sẵn trong image Docker): khi bot kết nối Discord thành công, nó tính hash của định nghĩa lệnh, so với hash lưu trong Redis (khóa `<REDIS_KEY_PREFIX>:v1:cmdhash:...`, TTL 30 ngày) và chỉ gọi Discord khi hash đổi. Đăng ký thất bại chỉ ghi một dòng cảnh báo, không làm bot dừng, và lần khởi động sau thử lại. `REGISTER_COMMANDS_FORCE=true` bỏ qua so sánh. Cùng quy tắc với script: có `DEV_GUILD_ID` thì đăng ký vào máy chủ dev, không thì đăng ký toàn cầu. Phần gọi Discord thật chưa được kiểm chứng (xem cuối tài liệu); logic hash đã được thử với bộ đăng ký giả.
-- Script `npm run deploy-commands` vẫn dùng được như trước (các lệnh bên trên), dùng cùng mã tuần tự hóa lệnh.
-- Nếu `DEV_GUILD_ID` được đặt và không có `--global`, lệnh chỉ đăng ký vào máy chủ dev.
-- Lưu ý trùng lệnh: nếu cùng một lệnh vừa đăng ký toàn cầu vừa đăng ký trong máy chủ dev, máy chủ dev sẽ thấy hai bản. Hãy chạy `--clear-dev` sau khi đã đăng ký toàn cầu, hoặc để trống `DEV_GUILD_ID` ở môi trường chạy thật.
-- Chạy lại lệnh mỗi khi thay đổi định nghĩa lệnh.
+- **Automatic registration on startup** (`REGISTER_COMMANDS_ON_START`, on in the Docker image): once the bot connects to Discord, it hashes the command definitions, compares the hash with the one stored in Redis (key `<REDIS_KEY_PREFIX>:v1:cmdhash:...`, TTL 30 days) and only calls Discord when the hash changed. A failed registration only logs one warning line, does not stop the bot, and is retried on the next start. `REGISTER_COMMANDS_FORCE=true` skips the comparison. Same rule as the script: with `DEV_GUILD_ID` the commands go to the dev server, otherwise they are registered globally. The real Discord call has not been verified (see the end of this document); the hash logic was tested with a fake registrar.
+- v1.3 changes the command definitions (English descriptions with Vietnamese localizations, the new `/settings language` subcommand), so the commands are re-registered once after upgrading.
+- The `npm run deploy-commands` script still works as before (the commands above) and uses the same command serialization code.
+- If `DEV_GUILD_ID` is set and `--global` is not given, the commands are only registered in the dev server.
+- Duplicate commands: if the same command is registered both globally and in the dev server, the dev server shows two copies. Run `--clear-dev` after registering globally, or leave `DEV_GUILD_ID` empty in production.
+- Re-run the command whenever the command definitions change.
 
-## Chạy bot
+## Running the bot
 
 ```bash
-# Chạy thật
+# Production
 npm run build && npm start
 
-# Phát triển (tự khởi động lại khi sửa mã)
+# Development (restarts automatically on code changes)
 npm run dev
 ```
 
-Kiểm tra tĩnh: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check-commands`.
+Static checks: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check-commands`.
 
-## Danh sách lệnh
+## Command list
 
-Bảng dưới đây lấy từ kết quả `npm run check-commands`. Tất cả lệnh chỉ dùng trong máy chủ. Cột "Tùy chọn" là số tùy chọn của lệnh.
+The table below comes from the `npm run check-commands` output. All commands only work inside a server. The "Options" column is the number of options of the command. Command names are always English; the descriptions shown here are the English ones, and users whose Discord client is set to Vietnamese see the Vietnamese localizations (see [Language](#language)).
 
-| Lệnh          | Nhóm    | Tùy chọn                                         | Cooldown | Mô tả                                                     |
-| ------------- | ------- | ------------------------------------------------ | -------- | --------------------------------------------------------- |
-| `/ping`       | Chung   | 0                                                | 3s       | Kiểm tra độ trễ của bot                                   |
-| `/help`       | Chung   | 0                                                | 3s       | Xem danh sách lệnh của bot                                |
-| `/play`       | Âm nhạc | 3 (`query`, `source`, `next`)                    | 3s       | Phát nhạc từ liên kết hoặc từ khóa tìm kiếm               |
-| `/pause`      | Âm nhạc | 0                                                | 1s       | Tạm dừng bài đang phát                                    |
-| `/resume`     | Âm nhạc | 0                                                | 1s       | Tiếp tục phát nhạc                                        |
-| `/skip`       | Âm nhạc | 1 (`to`)                                         | 1s       | Bỏ qua bài đang phát                                      |
-| `/previous`   | Âm nhạc | 0                                                | 2s       | Phát lại bài trước đó                                     |
-| `/stop`       | Âm nhạc | 0                                                | 2s       | Dừng phát nhạc và xóa hàng đợi                            |
-| `/leave`      | Âm nhạc | 0                                                | 2s       | Rời kênh thoại và xóa hàng đợi                            |
-| `/join`       | Âm nhạc | 0                                                | 3s       | Cho bot vào kênh thoại của bạn                            |
-| `/queue`      | Âm nhạc | 1 (`page`)                                       | 2s       | Xem hàng đợi phát nhạc                                    |
-| `/nowplaying` | Âm nhạc | 0                                                | 2s       | Xem bài đang phát                                         |
-| `/volume`     | Âm nhạc | 1 (`level`)                                      | 1s       | Điều chỉnh âm lượng (0-150)                               |
-| `/seek`       | Âm nhạc | 1 (`time`)                                       | 1s       | Tua tới một thời điểm trong bài đang phát                 |
-| `/forward`    | Âm nhạc | 1 (`seconds`)                                    | 1s       | Tua tới trước                                             |
-| `/rewind`     | Âm nhạc | 1 (`seconds`)                                    | 1s       | Tua lùi lại                                               |
-| `/loop`       | Âm nhạc | 1 (`mode`)                                       | 1s       | Đặt chế độ lặp                                            |
-| `/shuffle`    | Âm nhạc | 0                                                | 2s       | Xáo trộn thứ tự hàng đợi                                  |
-| `/remove`     | Âm nhạc | 1 (`position`)                                   | 1s       | Xóa một bài khỏi hàng đợi                                 |
-| `/clear`      | Âm nhạc | 0                                                | 2s       | Xóa các bài đang chờ (giữ bài đang phát)                  |
-| `/move`       | Âm nhạc | 2 (`from`, `to`)                                 | 1s       | Di chuyển một bài sang vị trí khác trong hàng đợi         |
-| `/filter`     | Âm nhạc | 1 (`name`)                                       | 3s       | Áp dụng bộ lọc âm thanh                                   |
-| `/lyrics`     | Âm nhạc | 0                                                | 10s      | Xem lời bài hát đang phát                                 |
-| `/autoplay`   | Âm nhạc | 2 (`state`, `mode`)                              | 3s       | Bật hoặc tắt tự động phát bài gợi ý khi hết hàng đợi      |
-| `/radio`      | Âm nhạc | 1 (`query`)                                      | 10s      | Phát radio: tự thêm bài liên quan từ một bài hoặc từ khóa |
-| `/similar`    | Âm nhạc | 0                                                | 10s      | Xem và thêm các bài tương tự với bài đang phát            |
-| `/settings`   | Cài đặt | 3 lệnh con (`view`, `dj-role`, `default-volume`) | 3s       | Cài đặt bot cho máy chủ này                               |
+| Command       | Category | Options                                                       | Cooldown | Description                                                      |
+| ------------- | -------- | ------------------------------------------------------------- | -------- | ---------------------------------------------------------------- |
+| `/ping`       | General  | 0                                                             | 3s       | Check the bot's latency                                          |
+| `/help`       | General  | 0                                                             | 3s       | Show the list of bot commands                                    |
+| `/play`       | Music    | 3 (`query`, `source`, `next`)                                 | 3s       | Play music from a link or a search query                         |
+| `/pause`      | Music    | 0                                                             | 1s       | Pause the current track                                          |
+| `/resume`     | Music    | 0                                                             | 1s       | Resume playback                                                  |
+| `/skip`       | Music    | 1 (`to`)                                                      | 1s       | Skip the current track                                           |
+| `/previous`   | Music    | 0                                                             | 2s       | Play the previous track again                                    |
+| `/stop`       | Music    | 0                                                             | 2s       | Stop playback and clear the queue                                |
+| `/leave`      | Music    | 0                                                             | 2s       | Leave the voice channel and clear the queue                      |
+| `/join`       | Music    | 0                                                             | 3s       | Make the bot join your voice channel                             |
+| `/queue`      | Music    | 1 (`page`)                                                    | 2s       | Show the music queue                                             |
+| `/nowplaying` | Music    | 0                                                             | 2s       | Show the current track                                           |
+| `/volume`     | Music    | 1 (`level`)                                                   | 1s       | Adjust the volume (0-150)                                        |
+| `/seek`       | Music    | 1 (`time`)                                                    | 1s       | Seek to a position in the current track                          |
+| `/forward`    | Music    | 1 (`seconds`)                                                 | 1s       | Fast-forward                                                     |
+| `/rewind`     | Music    | 1 (`seconds`)                                                 | 1s       | Rewind                                                           |
+| `/loop`       | Music    | 1 (`mode`)                                                    | 1s       | Set the loop mode                                                |
+| `/shuffle`    | Music    | 0                                                             | 2s       | Shuffle the queue                                                |
+| `/remove`     | Music    | 1 (`position`)                                                | 1s       | Remove a track from the queue                                    |
+| `/clear`      | Music    | 0                                                             | 2s       | Remove the upcoming tracks (keeps the current track)             |
+| `/move`       | Music    | 2 (`from`, `to`)                                              | 1s       | Move a track to another position in the queue                    |
+| `/filter`     | Music    | 1 (`name`)                                                    | 3s       | Apply an audio filter                                            |
+| `/lyrics`     | Music    | 0                                                             | 10s      | Show the lyrics of the current track                             |
+| `/autoplay`   | Music    | 2 (`state`, `mode`)                                           | 3s       | Turn autoplay of suggested tracks on or off when the queue ends  |
+| `/radio`      | Music    | 1 (`query`)                                                   | 10s      | Start a radio: keeps adding related tracks from a track or query |
+| `/similar`    | Music    | 0                                                             | 10s      | Browse and add tracks similar to the current track               |
+| `/settings`   | Settings | 4 subcommands (`view`, `dj-role`, `default-volume`, `language`) | 3s     | Bot settings for this server                                     |
 
-Ghi chú:
+Notes:
 
-- Hầu hết lệnh điều khiển yêu cầu bạn đang ở cùng kênh thoại với bot. `/play` và `/join` yêu cầu bạn đang ở một kênh thoại.
-- `/play` nhận liên kết hoặc từ khóa; `source` chọn `youtube`, `youtubemusic` hoặc `soundcloud` cho từ khóa; `next` chèn bài lên đầu hàng đợi. Từ khóa chỉ phát kết quả tốt nhất; playlist và Mix được thêm toàn bộ (tối đa 300 bài mỗi lần, bài trùng bị bỏ qua), hàng đợi tối đa 1000 bài.
-- `/autoplay` nhận `state` (`on`/`off`) và `mode` (`related`/`seed`); `/radio` nhận liên kết hoặc từ khóa. `/autoplay` cần quyền DJ khi đã đặt vai trò DJ, `/radio` và `/similar` thì không. `/autoplay` chỉ đổi cài đặt nên dùng được khi bạn không ở trong kênh thoại (không cần player hay quyền vào kênh); việc tự thêm bài vẫn cần có người trong kênh thoại.
-- `/seek` nhận `mm:ss`, `h:mm:ss` hoặc số giây. `/volume` nhận 0-150.
+- Most control commands require you to be in the same voice channel as the bot. `/play` and `/join` require you to be in a voice channel.
+- `/play` accepts a link or a query; `source` picks `youtube`, `youtubemusic` or `soundcloud` for queries; `next` inserts the track at the front of the queue. A query only plays the best result; playlists and Mixes are added in full (at most 300 tracks per request, duplicates skipped), with a queue limit of 1000 tracks.
+- `/autoplay` takes `state` (`on`/`off`) and `mode` (`related`/`seed`); `/radio` takes a link or a query. `/autoplay` needs DJ permission when a DJ role is set, `/radio` and `/similar` do not. `/autoplay` only changes a setting, so it works when you are not in a voice channel (no player or channel permission needed); adding tracks automatically still requires someone in the voice channel.
+- `/seek` accepts `mm:ss`, `h:mm:ss` or a number of seconds. `/volume` accepts 0-150.
 
-## Vai trò DJ và `/settings`
+## DJ role and `/settings`
 
-- `/settings view`: xem cài đặt hiện tại.
-- `/settings dj-role [role]`: đặt vai trò DJ; bỏ trống `role` để xóa.
-- `/settings default-volume level`: âm lượng mặc định cho phiên phát mới (0-150).
-- `/settings view` cũng hiển thị trạng thái và chế độ autoplay (đặt bằng `/autoplay`).
-- Chỉ người có quyền **Manage Server** mới dùng được `/settings`.
-- Khi chưa đặt vai trò DJ, mọi người trong kênh thoại đều dùng được các lệnh điều khiển.
-- Khi đã đặt vai trò DJ, các lệnh điều khiển (tạm dừng, dừng, âm lượng, lặp, ...) chỉ dành cho người có vai trò DJ hoặc quyền Manage Server. Ngoại lệ: người đang nghe một mình cùng bot; người đã thêm bài được phép `/skip`, `/previous`, `/remove`, `/seek`, `/forward`, `/rewind` trên bài của chính mình.
-- Nếu vai trò DJ bị xóa khỏi máy chủ, bot coi như chưa đặt vai trò DJ và tự xóa thiết lập đó, nên người dùng không bị khóa khỏi các lệnh điều khiển.
-- Cài đặt được lưu trong PostgreSQL khi `STORAGE_DRIVER=persistent`; với `memory` chúng mất khi bot khởi động lại.
+- `/settings view`: show the current settings.
+- `/settings dj-role [role]`: set the DJ role; leave `role` empty to clear it.
+- `/settings default-volume level`: default volume for new sessions (0-150).
+- `/settings language locale` (v1.3): the bot language in this server: `English`, `Tiếng Việt` or `Bot default` (clears the choice and falls back to `DEFAULT_LOCALE`). The confirmation reply uses the new language and the "Now playing" message is re-rendered.
+- `/settings view` also shows the autoplay state and mode (set with `/autoplay`) and the language row (the chosen language's name, or `Default (<name of the DEFAULT_LOCALE language>)`).
+- Only members with the **Manage Server** permission can use `/settings`.
+- While no DJ role is set, everyone in the voice channel can use the control commands.
+- Once a DJ role is set, the control commands (pause, stop, volume, loop, ...) are reserved for members with the DJ role or the Manage Server permission. Exceptions: someone listening alone with the bot; the member who added a track may `/skip`, `/previous`, `/remove`, `/seek`, `/forward`, `/rewind` on their own track.
+- If the DJ role is deleted from the server, the bot treats it as not set and clears the setting, so users are not locked out of the control commands.
+- Settings are stored in PostgreSQL with `STORAGE_DRIVER=persistent`; with `memory` they are lost when the bot restarts.
 
-## Bảo mật
+## Language
 
-- Stack production (`docker-compose.yml`) không publish cổng nào ra máy chủ: Lavalink, PostgreSQL và Redis chỉ nằm trong mạng riêng của Docker (Lavalink ở mạng `lavalink`, PostgreSQL/Redis ở mạng `data`, bot ở cả hai). Hạ tầng dev (`docker-compose.dev.yml`) chỉ bind `127.0.0.1`. Không mở các cổng này ra internet; nếu bot chạy ở máy khác, dùng mạng riêng hoặc TLS (`LAVALINK_SECURE=true` cùng reverse proxy cổng 443).
-- Container bot chạy bằng user `node` (không phải root), hệ tệp gốc chỉ đọc (chỉ `/tmp` ghi được), `cap_drop: ALL` và `no-new-privileges`. Image không chứa `.env`, mã nguồn TypeScript, source map hay công cụ phát triển.
-- Dùng mật khẩu Lavalink mạnh (`openssl rand -hex 24`, hoặc để `./scripts/setup.sh` sinh). Docker Compose từ chối khởi động nếu thiếu `LAVALINK_PASSWORD`.
-- `.env` do `setup.sh` tạo có quyền `600`; script không bao giờ `source` tệp này và chỉ nhận giá trị khớp mẫu an toàn nên không bị chèn dòng. Tệp sao lưu `backups/*.dump` cũng có quyền `600` (thư mục `700`) và chứa dữ liệu thật: bảo vệ như `.env`.
-- Mật khẩu nằm trong biến môi trường của container (bot: `DATABASE_URL`, `REDIS_URL`) và trong tham số tiến trình Redis, nên người dùng thuộc nhóm `docker` đọc được qua `docker inspect`. Chỉ cấp nhóm `docker` cho người tin cậy.
-- Không commit `.env`, token hay mật khẩu. Token và mật khẩu được che khỏi log; lỗi hiển thị cho người dùng không chứa stack trace.
-- Nguồn `http` của Lavalink được bật để phát tệp âm thanh trực tiếp. Bot chặn liên kết trỏ tới địa chỉ nội bộ (loopback, mạng riêng, link-local, `localhost`, tên miền `.local`, địa chỉ có thông tin đăng nhập, ...) trước khi gửi tới Lavalink nhằm giảm rủi ro SSRF.
-- **Giới hạn của bộ lọc SSRF**: bộ lọc chỉ kiểm tra tên máy chủ (host) ghi trong liên kết. Nó không phân giải DNS (một tên miền trỏ tới địa chỉ nội bộ vẫn lọt qua) và không theo dõi chuyển hướng (redirect). Nếu chạy bot công khai, hãy thêm giới hạn ở tầng mạng cho container Lavalink (chặn egress tới dải IP nội bộ, link-local và metadata đám mây).
-- PostgreSQL và Redis đều yêu cầu mật khẩu (và không được publish trong stack production). Chuỗi kết nối, mật khẩu và `LASTFM_API_KEY` được che khỏi log và lỗi. `PLAY_HISTORY=true` lưu ID người yêu cầu từng bài; chỉ bật khi cần và nêu rõ với người dùng.
-- Bot không mở cổng HTTP nào; chỉ kết nối đi ra tới Discord và Lavalink. Kiểm tra sức khỏe của container dùng tệp heartbeat chứ không dùng cổng mạng.
-- Intents tối thiểu: `Guilds` và `GuildVoiceStates`.
+- The bot supports `en` (English, the default) and `vi` (Vietnamese).
+- `DEFAULT_LOCALE` in `.env` (`en` | `vi`, default `en`; empty = `en`) is the bot's default language. Any other value makes the bot exit at startup with a configuration error.
+- `/settings language` (requires Manage Server) picks the language per server: `English`, `Tiếng Việt` or `Bot default`.
+- Resolution order for replies, the "Now playing" message and channel notices: the server's setting, then `DEFAULT_LOCALE`. The user's Discord client language does not affect these messages. The bot's presence text and the reply in direct messages use `DEFAULT_LOCALE`. If a server's settings cannot be read, notices fall back to `DEFAULT_LOCALE`.
+- Logs are always in English.
+- Slash command names are always English. Command, option and choice descriptions follow each user's Discord client language (clients set to Vietnamese show the Vietnamese localizations), independently of both `DEFAULT_LOCALE` and `/settings language`.
+- After upgrading to v1.3 the command definitions change, so the commands are re-registered once (automatically with `REGISTER_COMMANDS_ON_START=true`, or with `npm run deploy-commands`).
+- Migration `0001_guild_language` adds the `guild_settings.language` column. The Docker stack applies it automatically on startup (`AUTO_MIGRATE=true`); when running the bot on the host, run `npm run db:migrate` first. A v1.3 bot on an un-migrated database logs `Database schema is missing or outdated. Run "npm run db:migrate" and restart the bot` and runs in degraded mode.
+- To keep Vietnamese as the default after upgrading, set `DEFAULT_LOCALE=vi` (re-run `./scripts/setup.sh` to append the new key to an existing `.env`).
 
-## Hạn chế đã biết
+## Security
 
-- **SoundCloud**: trong lần kiểm tra (Lavalink 4.2.2), cả tìm kiếm `scsearch` lẫn liên kết SoundCloud đều trả lỗi "Did not detect any supported formats" do lỗi phía Lavaplayer. Lệnh vẫn có tùy chọn nguồn này nhưng sẽ báo lỗi thân thiện khi nguồn gặp sự cố.
-- **Lời bài hát (`/lyrics`)**: phụ thuộc plugin LavaLyrics và dịch vụ LRCLIB (có giới hạn tần suất, từng trả HTTP 429). Kết quả không ổn định; bot trả thông báo "không hỗ trợ / không tìm thấy / không lấy được" thay vì lỗi.
-- **YouTube không ổn định**: YouTube liên tục thay đổi và chặn; có thể cần OAuth/poToken hoặc cập nhật plugin.
-- **Cài đặt và hàng đợi**: cài đặt được lưu bền vững khi dùng `persistent`; hàng đợi chỉ được khôi phục theo các điều kiện ở phần "Khôi phục sau khi khởi động lại". Trạng thái `/radio` chỉ nằm trong bộ nhớ và mất khi bot khởi động lại. Mất node Lavalink (trong khi bot vẫn chạy) không khôi phục hàng đợi.
-- **Gợi ý nhạc**: `lastfm` cần khóa API và `lavasrc` cần thông tin xác thực của dịch vụ tương ứng; khi thiếu, chuỗi nguồn chỉ còn `ytmix` và `artist`. Chất lượng YouTube Mix có thể thay đổi theo YouTube.
-- **Nhiều tiến trình**: cooldown và giới hạn tần suất dùng Redis nên dùng chung được, nhưng chưa kiểm chứng việc chạy nhiều tiến trình.
-- **Chế độ 24/7**: có trong mã nhưng chưa có lệnh bật; mặc định tắt.
-- **Một node Lavalink**: chỉ dùng một node, chưa cân bằng tải nhiều node.
-- Bandcamp và Twitch chỉ nhận liên kết (không có tìm kiếm). Kênh Stage chưa được hỗ trợ.
-- `bcsearch:` không phải tính năng của Lavalink nên không có tìm kiếm Bandcamp.
+- The production stack (`docker-compose.yml`) publishes no ports to the host: Lavalink, PostgreSQL and Redis only live on Docker's private networks (Lavalink on the `lavalink` network, PostgreSQL/Redis on the `data` network, the bot on both). The dev infrastructure (`docker-compose.dev.yml`) only binds `127.0.0.1`. Do not expose these ports to the internet; if the bot runs on another machine, use a private network or TLS (`LAVALINK_SECURE=true` with a reverse proxy on port 443).
+- The bot container runs as the `node` user (not root), with a read-only root filesystem (only `/tmp` is writable), `cap_drop: ALL` and `no-new-privileges`. The image contains no `.env`, TypeScript source, source maps or development tools.
+- Use a strong Lavalink password (`openssl rand -hex 24`, or let `./scripts/setup.sh` generate it). Docker Compose refuses to start without `LAVALINK_PASSWORD`.
+- The `.env` created by `setup.sh` has mode `600`; the script never `source`s this file and only accepts values that match safe patterns, so lines cannot be injected. Backup files `backups/*.dump` also have mode `600` (directory `700`) and contain real data: protect them like `.env`.
+- Passwords are in the containers' environment variables (bot: `DATABASE_URL`, `REDIS_URL`) and in the Redis process arguments, so members of the `docker` group can read them with `docker inspect`. Only give `docker` group membership to trusted people.
+- Do not commit `.env`, tokens or passwords. Tokens and passwords are redacted from the logs; errors shown to users contain no stack traces.
+- Lavalink's `http` source is enabled to play audio files directly. Before sending to Lavalink, the bot blocks links that point to internal addresses (loopback, private networks, link-local, `localhost`, `.local` domains, addresses with credentials, ...) to reduce SSRF risk.
+- **Limits of the SSRF filter**: the filter only checks the host name written in the link. It does not resolve DNS (a domain that points to an internal address still gets through) and does not follow redirects. If you run the bot publicly, add network-level limits for the Lavalink container (block egress to internal, link-local and cloud metadata IP ranges).
+- PostgreSQL and Redis both require a password (and are not published in the production stack). Connection strings, passwords and `LASTFM_API_KEY` are redacted from logs and errors. `PLAY_HISTORY=true` stores the requester ID of each track; only enable it when needed and tell your users.
+- The bot opens no HTTP port; it only makes outbound connections to Discord and Lavalink. The container health check uses a heartbeat file, not a network port.
+- Minimal intents: `Guilds` and `GuildVoiceStates`.
 
-## Những gì chưa được kiểm chứng runtime
+## Known limitations
 
-Các mục dưới đây chưa được chạy với phiên Discord thật (không có token Discord thật trong quá trình kiểm tra):
+- **SoundCloud**: during testing (Lavalink 4.2.2), both `scsearch` searches and SoundCloud links failed with "Did not detect any supported formats" because of a Lavaplayer-side bug. The command still offers this source but reports a friendly error when the source fails.
+- **Lyrics (`/lyrics`)**: depends on the LavaLyrics plugin and the LRCLIB service (rate limited, has returned HTTP 429). Results are unreliable; the bot replies with "not supported / not found / could not fetch" messages instead of errors.
+- **YouTube is unstable**: YouTube keeps changing and blocking; OAuth/poToken or a plugin update may be needed.
+- **Settings and queues**: settings are persisted with `persistent`; queues are only restored under the conditions in "Restore after restart". `/radio` state is in memory only and is lost when the bot restarts. Losing the Lavalink node (while the bot keeps running) does not restore the queue.
+- **Suggestions**: `lastfm` needs an API key and `lavasrc` needs credentials for the matching service; without them, the provider chain is reduced to `ytmix` and `artist`. YouTube Mix quality can change with YouTube.
+- **Multiple processes**: cooldowns and rate limits use Redis so they can be shared, but running several processes has not been verified.
+- **24/7 mode**: exists in the code but has no command to enable it yet; off by default.
+- **One Lavalink node**: only one node is used, with no load balancing across nodes.
+- Bandcamp and Twitch only accept links (no search). Stage channels are not supported yet.
+- `bcsearch:` is not a Lavalink feature, so there is no Bandcamp search.
 
-- Phát âm thanh thật qua kênh thoại Discord.
-- Nút bấm trên tin nhắn "Đang phát" và phân trang trên tin nhắn thật.
-- Đăng ký lệnh slash lên Discord và cách hiển thị tùy chọn.
-- Autocomplete qua Discord (chỉ kiểm tra logic tìm kiếm với Lavalink).
-- Spotify (không có thông tin xác thực).
-- Liên kết Bandcamp và Twitch.
-- Lời bài hát từ đầu đến cuối.
-- Chế độ 24/7 và hành vi DJ/hẹn giờ với thành viên thật.
-- Bước `sudo chown -R 322:322 lavalink/plugins` trên Linux (chỉ thử trên Docker Desktop macOS). Từ v1.2 bước này được thay bằng dịch vụ `lavalink-init`, xem mục v1.2 bên dưới.
-- Luồng OAuth và poToken của YouTube (không có tài khoản phụ để thử).
-- Playlist thật trên 300 bài (giới hạn mới chỉ được thử với node giả lập).
-- Khôi phục sau khi khởi động lại trong kênh thoại thật (vào lại kênh và phát tiếp đúng vị trí).
-- `/autoplay`, `/radio`, `/similar` trên Discord thật (menu chọn, nút bấm, collector ephemeral) và autoplay sau khi hàng đợi thật sự kết thúc.
-- Sự kiện `roleDelete` trong một máy chủ thật (chỉ thử bằng giả lập).
-- Kết quả thật từ Last.fm (không có khóa API) và nguồn gợi ý LavaSrc (cần thông tin xác thực Deezer/Yandex/VK/Qobuz).
-- Gợi ý của Spotify: không được dùng (xem phần Tự khám phá nhạc).
-- Hành vi lâu dài của YouTube Mix (chỉ kiểm tra tại một thời điểm từ một địa chỉ IP; YouTube hay thay đổi).
-- Dữ liệu Redis (AOF) có còn sau khi khởi động lại máy chủ hay không.
-- Chạy nhiều tiến trình bot với `PUBSUB_INVALIDATION=true` (chỉ thử hai instance trong cùng một script).
+## What has not been verified at runtime
 
-Chưa được kiểm chứng ở v1.2 (đóng gói và triển khai):
+The items below have not been run with a real Discord session (no real Discord token was available during testing):
 
-- Đăng nhập Discord thật trong container: toàn bộ luồng sau `clientReady` (ghi heartbeat sau khi sẵn sàng, `HEALTHCHECK` chuyển sang `healthy`, tự đăng ký lệnh slash bằng lệnh `PUT` thật). Khi thử chỉ dùng token giả nên bot dừng ở dòng `Login failed`; hàng `bot login` PASS của `doctor.sh` chỉ phản ánh trạng thái Docker của bản giả lập.
-- Tắt êm (`docker compose stop`) khi đang có gateway Discord và player thoại thật; mới thử đường tắt trước khi đăng nhập (thoát mã 0 sau khoảng 1 giây).
-- Chạy image `linux/amd64` trực tiếp trên máy amd64: mới build và chạy qua giả lập (QEMU) trên máy arm64 (in ra `x64`). Build đa kiến trúc bằng một lệnh `docker buildx build --platform linux/amd64,linux/arm64` không chạy được với driver `docker` mặc định của máy thử (cần driver `docker-container` hoặc containerd image store), nên workflow `release.yml` chưa được thử như một lần build đa nền tảng.
-- Workflow GitHub Actions (`ci.yml`, `release.yml`): chỉ qua actionlint và chạy lại cục bộ các lệnh shell của chúng (`docker compose config`, so sánh tag image, `docker build`, shellcheck); chưa chạy trên GitHub, chưa đẩy image lên GHCR, chưa kiểm tra quyền `packages: write` hay cài đặt hiển thị gói của GHCR.
-- Kéo image dựng sẵn bằng `BOT_IMAGE` từ một registry thật (chỉ thử đường lỗi khi không kéo được).
-- Máy chủ Linux thật: Docker Engine cài từ apt, `ufw`, quyền thư mục khi bind mount trên Linux (các thử nghiệm quyền dùng volume có tên trong Docker Desktop), các lệnh cài đặt Docker và tường lửa trong phần VPS.
-- Bash của máy chủ Linux với `backup.sh`, `restore.sh`, `update.sh`, `doctor.sh` (chỉ `setup.sh` được chạy thêm trong container Debian 12; các script còn lại chạy bằng bash 3.2 của macOS).
-- Windows (WSL2 hoặc Git Bash) và Docker Compose cũ hơn 2.32.
-- `git clone` từ một kho từ xa thật (kho thử chưa có remote); nhánh `git pull --ff-only` chỉ thử với kho giả trong `/tmp`.
-- Khôi phục một bản sao lưu vào cơ sở dữ liệu có lược đồ khác với mã hiện tại; xoay mật khẩu Lavalink/Redis/PostgreSQL trên stack đang chạy.
-- Giới hạn tài nguyên mẫu (`deploy.resources.limits`, đang để dạng chú thích trong `docker-compose.yml`).
-- Thời gian build image lần đầu trên máy trắng (lần thử có cache lớp) và dung lượng đĩa trên VPS thật.
-- Giới hạn của việc xóa lại snapshot sau sự cố Redis (v1.2): chỉ hoạt động trong cùng một tiến trình; nếu bot khởi động lại khi Redis vẫn ngừng thì không thể biết snapshot nào đã bị xóa.
+- Real audio playback through a Discord voice channel.
+- Buttons on the "Now playing" message and pagination on real messages.
+- Registering the slash commands with Discord and how the options are displayed.
+- Autocomplete through Discord (only the search logic was tested against Lavalink).
+- Spotify (no credentials).
+- Bandcamp and Twitch links.
+- Lyrics end to end.
+- 24/7 mode and the DJ/timer behavior with real members.
+- The `sudo chown -R 322:322 lavalink/plugins` step on Linux (only tried on Docker Desktop for macOS). Since v1.2 this step is replaced by the `lavalink-init` service, see the v1.2 list below.
+- YouTube OAuth and poToken flows (no secondary account to test with).
+- Real playlists with more than 300 tracks (the new limit was only tested with a mock node).
+- Restore after a restart in a real voice channel (rejoining the channel and continuing at the right position).
+- `/autoplay`, `/radio`, `/similar` on real Discord (select menu, buttons, ephemeral collector) and autoplay after a real queue end.
+- The `roleDelete` event in a real server (only tested with mocks).
+- Real results from Last.fm (no API key) and from the LavaSrc suggestion provider (needs Deezer/Yandex/VK/Qobuz credentials).
+- Spotify recommendations: not used (see Music discovery).
+- Long-term behavior of YouTube Mix (only checked at one point in time from one IP address; YouTube changes often).
+- Whether the Redis data (AOF) survives a server reboot.
+- Running several bot processes with `PUBSUB_INVALIDATION=true` (only two instances in the same script were tried).
 
-Đã kiểm chứng: PostgreSQL 18 và Redis 8 khởi động từ Docker Compose (`config -q` đạt khi có mật khẩu và báo lỗi khi thiếu), `npm run db:migrate` chạy lặp lại được, cài đặt đọc/ghi qua Redis và PostgreSQL, snapshot lưu/đọc/xóa và tắt êm giữ snapshot, cooldown và giới hạn tần suất qua Redis, chế độ suy giảm khi dừng và bật lại từng backend (một dòng log mỗi đợt, tự hồi phục, ghi bù cài đặt đang chờ), mọi khóa Redis đều có TTL, tải playlist/Mix YouTube thật (kể cả `youtu.be` và bắt đầu từ video đã chọn), chuỗi nguồn gợi ý `ytmix` và `artist` với Lavalink thật, bộ lọc tiền tố nguồn cho mọi khóa của `DefaultSources`, và bước xử lý vai trò DJ bị xóa (bằng đối tượng giả lập). Ngoài ra: Lavalink khởi động từ `docker-compose.yml` + `lavalink/application.yml` (3 plugin nạp thành công, `/v4/info` trả 401 khi không có mật khẩu và 200 khi có), tìm kiếm `ytsearch`, tải playlist YouTube, từ chối liên kết nội bộ, và khởi động bot với cấu hình thiếu/token sai không làm lộ bí mật.
+Not verified in v1.2 (packaging and deployment):
 
-Đã kiểm chứng ở v1.2 (Docker 27.5.1, Compose 2.32.4, macOS arm64, token Discord giả): image bot build được (khoảng 207 MB, chạy bằng user `node`, không có `.env`, mã nguồn, source map hay công cụ phát triển); build và chạy thử `linux/amd64` qua giả lập; cả bốn image gốc đều đa kiến trúc (amd64 và arm64) và cây phụ thuộc runtime không có module native; toàn bộ stack `docker compose up -d` (PostgreSQL, Redis, Lavalink khỏe, `lavalink-init` thoát mã 0, plugin thuộc uid 322, migration chạy lặp lại không lỗi, không container nào publish cổng, đúng một dòng `Login failed` mỗi lần khởi động, không lộ mật khẩu trong log, `docker history` hay `docker image inspect`); `docker-compose.dev.yml` (chỉ Lavalink khởi động được mà không cần mật khẩu PostgreSQL/Redis, `--profile storage`, chỉ bind `127.0.0.1`); `setup.sh` (tạo `.env` quyền 600, chạy lại không đổi, từ chối giá trị có ký tự nguy hiểm, nâng cấp `.env` cũ, chạy trong Debian 12 không có `openssl`); `deploy.sh`, `update.sh` (kể cả `--dry-run`, nhánh không có `.git`, nhánh `git pull --ff-only` với kho giả, in hướng dẫn quay lui khi lỗi), `backup.sh` (kèm dọn bản cũ), `restore.sh` (từ chối khi không có terminal, `--yes`, `--latest`), `doctor.sh` (trạng thái khỏe, hỏng và đã dừng), `logs.sh`, các target `make` (`up`, `ps`, `logs`, `doctor`, `backup`, `restore`, `restart`, `down`, `build`, `dev-infra`, `dev-infra-down`); shellcheck (v0.11.0) sạch cho mọi script; hadolint chỉ có một thông tin DL3066 (`USER node`) được chấp nhận; actionlint (1.7.12) sạch cho hai workflow; sửa lỗi v1.1: xóa snapshot được thử lại khi Redis hồi phục (thử với Redis thật bị dừng rồi bật lại), `purgeGuild` của chế độ `memory` xóa danh sách bài gần đây, `/autoplay` qua kiểm tra điều kiện khi người dùng không ở kênh thoại.
+- A real Discord login inside the container: the whole flow after `clientReady` (writing the heartbeat once ready, `HEALTHCHECK` turning `healthy`, automatic slash command registration with a real `PUT`). Testing only used a fake token, so the bot stopped at the `Login failed` line; the PASS `bot login` row of `doctor.sh` only reflects the Docker state of the simulation.
+- Graceful shutdown (`docker compose stop`) with a real Discord gateway and voice player; only the shutdown path before login was tried (exit code 0 after about 1 second).
+- Running the `linux/amd64` image directly on an amd64 machine: it was only built and run through emulation (QEMU) on an arm64 machine (it printed `x64`). A single multi-arch `docker buildx build --platform linux/amd64,linux/arm64` command does not work with the test machine's default `docker` driver (it needs the `docker-container` driver or the containerd image store), so `release.yml` has not been tried as a multi-platform build.
+- GitHub Actions workflows (`ci.yml`, `release.yml`): only actionlint and local re-runs of their shell commands (`docker compose config`, image tag comparison, `docker build`, shellcheck); not run on GitHub, no image pushed to GHCR, the `packages: write` permission and GHCR package visibility settings not checked.
+- Pulling a prebuilt image with `BOT_IMAGE` from a real registry (only the failure path when the pull fails was tried).
+- A real Linux server: Docker Engine installed from apt, `ufw`, directory permissions for bind mounts on Linux (the permission tests used named volumes in Docker Desktop), the Docker and firewall installation commands in the VPS section.
+- A Linux server's bash with `backup.sh`, `restore.sh`, `update.sh`, `doctor.sh` (only `setup.sh` was additionally run in a Debian 12 container; the other scripts ran with macOS bash 3.2).
+- Windows (WSL2 or Git Bash) and Docker Compose older than 2.32.
+- `git clone` from a real remote repository (the test repository has no remote); the `git pull --ff-only` branch was only tried with a fake repository in `/tmp`.
+- Restoring a backup into a database whose schema differs from the current code; rotating the Lavalink/Redis/PostgreSQL passwords on a running stack.
+- The sample resource limits (`deploy.resources.limits`, commented out in `docker-compose.yml`).
+- First image build time on a clean machine (the test had a layer cache) and disk usage on a real VPS.
+- The limit of re-deleting snapshots after a Redis outage (v1.2): it only works within the same process; if the bot restarts while Redis is still down, it cannot know which snapshots were deleted.
 
-Khuyến nghị thử nhanh trên một máy chủ thật: `/play never gonna give you up`, `/pause`, `/resume`, `/skip`, `/queue` và các nút trên tin nhắn "Đang phát".
+Not verified in v1.3 (internationalization):
 
-## Lưu ý pháp lý
+- How real Discord clients render the localized command descriptions and choice names (English/Vietnamese).
+- `/settings language` end to end and the re-render of the "Now playing" message after a language change in a real server.
+- The mixed-version window of the Redis settings cache (at most 1 hour) during an upgrade.
+- Upgrading the live stack to v1.3 (migration `0001` on real data, re-registering the commands).
 
-Phát nhạc từ YouTube, Spotify và một số dịch vụ khác qua các công cụ như Lavalink/youtube-source có thể vi phạm Điều khoản dịch vụ của các nền tảng đó. Dự án này được cung cấp nguyên trạng. Nếu bạn chạy bot **public** cho nhiều máy chủ, bạn (chủ bot) hoàn toàn tự chịu trách nhiệm về việc tuân thủ điều khoản của nền tảng và pháp luật về bản quyền.
+Verified: PostgreSQL 18 and Redis 8 start from Docker Compose (`config -q` passes with passwords and fails without them), `npm run db:migrate` can be re-run, settings read/write through Redis and PostgreSQL, snapshot save/read/delete and graceful shutdown keeping the snapshot, cooldowns and rate limits through Redis, degraded mode when stopping and restarting each backend (one log line per outage, automatic recovery, pending settings written back), every Redis key has a TTL, loading real YouTube playlists/Mixes (including `youtu.be` and starting from the selected video), the `ytmix` and `artist` suggestion providers against real Lavalink, the source prefix filter for every `DefaultSources` key, and the deleted-DJ-role handling (with mock objects). Also: Lavalink starts from `docker-compose.yml` + `lavalink/application.yml` (3 plugins loaded, `/v4/info` returns 401 without the password and 200 with it), `ytsearch` searches, loading YouTube playlists, rejecting internal links, and starting the bot with missing configuration or a wrong token without leaking secrets.
 
-## Khắc phục sự cố
+Verified in v1.2 (Docker 27.5.1, Compose 2.32.4, macOS arm64, fake Discord token): the bot image builds (about 207 MB, runs as the `node` user, contains no `.env`, source, source maps or development tools); `linux/amd64` built and run through emulation; all four base images are multi-arch (amd64 and arm64) and the runtime dependency tree has no native modules; the full `docker compose up -d` stack (PostgreSQL, Redis, Lavalink healthy, `lavalink-init` exits 0, plugins owned by uid 322, migrations re-run without errors, no container publishes ports, exactly one `Login failed` line per start, no passwords in the logs, `docker history` or `docker image inspect`); `docker-compose.dev.yml` (Lavalink alone starts without the PostgreSQL/Redis passwords, `--profile storage`, binds `127.0.0.1` only); `setup.sh` (creates `.env` with mode 600, re-runs change nothing, rejects values with dangerous characters, upgrades an old `.env`, runs in Debian 12 without `openssl`); `deploy.sh`, `update.sh` (including `--dry-run`, the branch without `.git`, the `git pull --ff-only` branch with a fake repository, printing rollback instructions on failure), `backup.sh` (with pruning of old backups), `restore.sh` (refuses without a terminal, `--yes`, `--latest`), `doctor.sh` (healthy, broken and stopped states), `logs.sh`, the `make` targets (`up`, `ps`, `logs`, `doctor`, `backup`, `restore`, `restart`, `down`, `build`, `dev-infra`, `dev-infra-down`); shellcheck (v0.11.0) clean for every script; hadolint with only one accepted DL3066 info (`USER node`); actionlint (1.7.12) clean for both workflows; v1.1 fixes: snapshot deletion is retried when Redis recovers (tested with a real Redis stopped and started again), `purgeGuild` in `memory` mode clears the recent-tracks list, `/autoplay` passes the guards when the user is not in a voice channel.
 
-| Triệu chứng                                                                                                            | Cách xử lý                                                                                                                                                                                                                                                                                          |
-| ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Không rõ lỗi ở đâu (Docker)                                                                                            | Chạy `./scripts/doctor.sh`: bảng PASS/FAIL/WARN cho Docker, `.env` (chỉ tên biến), từng container, Lavalink và plugin, PostgreSQL, Redis, đăng nhập bot, cổng publish.                                                                                                                              |
-| Bot thoát ngay với "Invalid configuration"                                                                             | Điền đủ các biến được liệt kê trong `.env` (log chỉ in tên biến, không in giá trị).                                                                                                                                                                                                                 |
-| "Login failed: An invalid token was provided."                                                                         | `DISCORD_TOKEN` sai hoặc đã bị reset; lấy token mới ở tab Bot, sửa `.env` rồi `./scripts/deploy.sh`. Trong Docker, bot chờ 30 giây rồi thoát nên bị khởi động lại mỗi 30-60 giây; `doctor.sh` nhận ra dòng log này.                                                                                 |
-| Lệnh slash không xuất hiện                                                                                             | Trong Docker, bot tự đăng ký khi kết nối Discord (xem log; `REGISTER_COMMANDS_FORCE=true` để buộc đăng ký lại). Chạy tay: `npm run deploy-commands`. Lệnh toàn cầu cần tới ~1 giờ. Kiểm tra bot được mời với scope `applications.commands`.                                                         |
-| Container bot `unhealthy`                                                                                              | Healthcheck chỉ đạt khi bot đã kết nối Discord và ghi heartbeat trong 60 giây gần nhất; token sai thì luôn `unhealthy`. Xem `./scripts/logs.sh bot`.                                                                                                                                                |
-| Thấy lệnh hiện hai lần                                                                                                 | Lệnh đã đăng ký cả toàn cầu và trong máy chủ dev; chạy `npm run deploy-commands -- --clear-dev`.                                                                                                                                                                                                    |
-| "Máy chủ âm nhạc đang không khả dụng"                                                                                  | Kiểm tra `docker compose ps` và `docker compose logs lavalink`. Trong Docker, bot luôn nối tới `lavalink:2333` bằng `LAVALINK_PASSWORD` trong `.env`; khi chạy bot trên máy host, `LAVALINK_HOST`, `LAVALINK_PORT`, `LAVALINK_PASSWORD` phải khớp với `docker-compose.dev.yml`. Bot tự kết nối lại. |
-| Compose báo thiếu `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `LAVALINK_PASSWORD`, `POSTGRES_PASSWORD` hoặc `REDIS_PASSWORD` | Đặt biến này trong `.env` (hoặc chạy `./scripts/setup.sh`) rồi chạy lại. Kiểm tra này áp dụng cho cả `docker compose ps/logs/down` vì Compose kiểm tra toàn tệp.                                                                                                                                    |
-| Log báo PostgreSQL/Redis không khả dụng                                                                                | Bot vẫn chạy ở chế độ suy giảm và tự thử lại. Kiểm tra `docker compose ps`, mật khẩu (và cổng/URL nếu chạy trên máy host). Trong Docker bot tự migrate; chạy trên máy host mà chưa có bảng thì chạy `npm run db:migrate`.                                                                           |
-| Đổi `POSTGRES_PASSWORD` mà PostgreSQL vẫn dùng mật khẩu cũ                                                             | Mật khẩu chỉ được áp dụng khi tạo volume lần đầu. Đổi bằng `ALTER USER` trong PostgreSQL, hoặc khôi phục bản sao lưu vào volume mới.                                                                                                                                                                |
-| Lavalink chưa `healthy` ở lần chạy đầu                                                                                 | Bình thường: 30-90 giây để tải 3 plugin. Quyền thư mục plugin do dịch vụ `lavalink-init` xử lý nên không cần `chown` thủ công.                                                                                                                                                                      |
-| "Sign in to confirm you're not a bot"                                                                                  | Cấu hình OAuth hoặc poToken cho YouTube như ở trên.                                                                                                                                                                                                                                                 |
-| Bot vào kênh nhưng không có tiếng                                                                                      | Xem log Lavalink (lỗi libdave/voice); kiểm tra quyền Connect và Speak của bot.                                                                                                                                                                                                                      |
-| Không phát được SoundCloud                                                                                             | Lỗi đã biết phía Lavalink, xem phần hạn chế.                                                                                                                                                                                                                                                        |
-| `LAVALINK_SECURE=true` báo lỗi cổng                                                                                    | Thư viện yêu cầu cổng `443` khi bật TLS.                                                                                                                                                                                                                                                            |
-| Cần thêm log chi tiết                                                                                                  | Đặt `LOG_LEVEL=debug` (có thể ghi cả stack trace; đừng chia sẻ công khai).                                                                                                                                                                                                                          |
+Verified in v1.3 (no real Discord token; throwaway PostgreSQL 18.6 / Redis 8.8.3 containers and a copy of the build): `npm run typecheck`, `lint`, `build` and `check-commands` pass, and `check-commands` now fails when any command, subcommand or option lacks a Vietnamese description localization or exceeds 100 characters (tested by removing one); the compiler rejects a Vietnamese catalog with a missing key, an extra key or a wrong parameter type; migration `0001_guild_language` re-runs cleanly (2 rows in `drizzle.__drizzle_migrations`), its check constraint rejects values other than `en`/`vi`, and a database with only `0000_init` makes the bot log `Database schema is missing or outdated`; the guild language round-trips through the in-process cache, Redis and PostgreSQL (including reset to the default and v1.2 Redis cache entries without a language field); `DEFAULT_LOCALE` unset, empty, `vi` and an invalid value (exit 1 without printing the value), and Docker Compose passing it to the bot; command names are unchanged apart from the new `/settings language` subcommand; every command/subcommand/option carries a Vietnamese localization, `/settings language` choices and Manage Server default permission, the locale resolution order, and the "Now playing" and queue embeds rendered in both languages with a fake player; an offline start with `DEFAULT_LOCALE=vi`, a fake token and auto-migrate (migrations applied, Redis and PostgreSQL connected, exactly one `Login failed` line, clean shutdown); scripts, Makefile, compose files, workflows and `.env.example` contain no Vietnamese text, shellcheck (v0.10.0) is clean, every script's `--help` and `make help` print English, `setup.sh` appends `DEFAULT_LOCALE` to an existing config file, `doctor.sh` prints an English report and the compose guards print English messages.
 
-## Cấu trúc dự án
+Suggested quick test on a real server: `/play never gonna give you up`, `/pause`, `/resume`, `/skip`, `/queue` and the buttons on the "Now playing" message; then `/settings language` with each choice.
+
+## Legal notice
+
+Playing music from YouTube, Spotify and some other services through tools such as Lavalink/youtube-source may violate those platforms' Terms of Service. This project is provided as is. If you run a **public** bot for many servers, you (the bot owner) are solely responsible for complying with the platforms' terms and with copyright law.
+
+## Troubleshooting
+
+| Symptom                                                                                                                | Fix                                                                                                                                                                                                                                                                                                |
+| ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Not sure where the problem is (Docker)                                                                                 | Run `./scripts/doctor.sh`: a PASS/FAIL/WARN table for Docker, `.env` (variable names only), each container, Lavalink and plugins, PostgreSQL, Redis, bot login, published ports.                                                                                                                   |
+| The bot exits immediately with "Invalid configuration"                                                                 | Fill in every variable listed in `.env` (the log only prints variable names, never values).                                                                                                                                                                                                        |
+| "Login failed: An invalid token was provided."                                                                         | `DISCORD_TOKEN` is wrong or has been reset; get a new token in the Bot tab, fix `.env`, then `./scripts/deploy.sh`. In Docker the bot waits 30 seconds and exits, so it is restarted every 30-60 seconds; `doctor.sh` detects this log line.                                                         |
+| Slash commands do not show up                                                                                          | In Docker the bot registers them when it connects to Discord (check the log; `REGISTER_COMMANDS_FORCE=true` forces a re-registration). Manually: `npm run deploy-commands`. Global commands take up to ~1 hour. Check that the bot was invited with the `applications.commands` scope.              |
+| Command descriptions show in English for a Vietnamese user (or the other way round)                                    | Descriptions follow the user's Discord client language, not `/settings language`; the commands must have been re-registered with v1.3 (see [Registering slash commands](#registering-slash-commands)).                                                                                             |
+| The bot container is `unhealthy`                                                                                       | The health check only passes when the bot is connected to Discord and wrote the heartbeat in the last 60 seconds; with a wrong token it is always `unhealthy`. See `./scripts/logs.sh bot`.                                                                                                        |
+| Commands show up twice                                                                                                 | The commands are registered both globally and in the dev server; run `npm run deploy-commands -- --clear-dev`.                                                                                                                                                                                     |
+| "The music server is unavailable"                                                                                      | Check `docker compose ps` and `docker compose logs lavalink`. In Docker the bot always connects to `lavalink:2333` with `LAVALINK_PASSWORD` from `.env`; when running the bot on the host, `LAVALINK_HOST`, `LAVALINK_PORT`, `LAVALINK_PASSWORD` must match `docker-compose.dev.yml`. The bot reconnects by itself. |
+| Compose reports a missing `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `LAVALINK_PASSWORD`, `POSTGRES_PASSWORD` or `REDIS_PASSWORD` | Set the variable in `.env` (or run `./scripts/setup.sh`) and run again. This check also applies to `docker compose ps/logs/down` because Compose checks the whole file.                                                                                                                      |
+| The log says PostgreSQL/Redis is unavailable                                                                           | The bot keeps running in degraded mode and retries. Check `docker compose ps` and the passwords (and the ports/URLs when running on the host). In Docker the bot migrates by itself; on the host, if the tables (or the v1.3 `language` column) are missing, run `npm run db:migrate`.             |
+| Changed `POSTGRES_PASSWORD` but PostgreSQL still uses the old password                                                 | The password is only applied when the volume is first created. Change it with `ALTER USER` in PostgreSQL, or restore a backup into a new volume.                                                                                                                                                   |
+| Lavalink is not `healthy` on the first run                                                                             | Normal: 30-90 seconds to download 3 plugins. Plugin directory permissions are handled by the `lavalink-init` service, so no manual `chown` is needed.                                                                                                                                              |
+| "Sign in to confirm you're not a bot"                                                                                  | Configure OAuth or poToken for YouTube as described above.                                                                                                                                                                                                                                         |
+| The bot joins the channel but there is no sound                                                                        | Check the Lavalink log (libdave/voice errors); check the bot's Connect and Speak permissions.                                                                                                                                                                                                      |
+| SoundCloud does not play                                                                                               | Known Lavalink-side bug, see the limitations section.                                                                                                                                                                                                                                              |
+| `LAVALINK_SECURE=true` reports a port error                                                                            | The library requires port `443` when TLS is enabled.                                                                                                                                                                                                                                               |
+| Need more detailed logs                                                                                                | Set `LOG_LEVEL=debug` (it may also log stack traces; do not share them publicly).                                                                                                                                                                                                                  |
+
+## Project structure
 
 ```
 src/
-  index.ts            Điểm vào, đăng nhập và tắt bot an toàn
-  config/             Đọc và kiểm tra biến môi trường, hằng số
-  client/             BotClient và đăng ký sự kiện
-  commands/           Lệnh theo nhóm: general/, music/, settings/ và index.ts (danh sách tường minh)
-  events/             Sự kiện Discord (ready, guildDelete, guildRoleDelete, interaction, voice state)
-  interactions/       Xử lý lệnh, nút bấm, autocomplete, cooldown
-  music/              Lavalink, hàng đợi, kiểm tra điều kiện, điều khiển, tìm kiếm, lời bài hát
-    discovery/        Engine gợi ý, autoplay, bộ lọc và các nguồn (providers/)
-    persistence/      Snapshot hàng đợi, queue store, khôi phục sau khi khởi động lại
-  storage/            Lớp lưu trữ: types, health (suy giảm), keys; memory/, redis/, postgres/ (Drizzle)
-  settings/           Cài đặt theo máy chủ (bộ nhớ hoặc PostgreSQL + Redis)
-  i18n/vi.ts          Toàn bộ chuỗi hiển thị bằng tiếng Việt
-  types/ utils/       Kiểu dùng chung, logger, lỗi, phân trang, embed
-  startup/            Migration khi khởi động (khóa advisory) và đăng ký lệnh slash theo hash
-  health/             Heartbeat cho HEALTHCHECK của Docker (healthcheck.ts ở src/ chạy bằng node dist/healthcheck.js)
+  index.ts            Entry point, login and safe shutdown
+  config/             Reading and validating environment variables, constants
+  client/             BotClient and event registration
+  commands/           Commands by group: general/, music/, settings/ and index.ts (explicit list)
+  events/             Discord events (ready, guildDelete, guildRoleDelete, interaction, voice state)
+  interactions/       Command, button and autocomplete handling, cooldowns
+  music/              Lavalink, queue, guards, controls, search, lyrics
+    discovery/        Suggestion engine, autoplay, filters and providers (providers/)
+    persistence/      Queue snapshots, queue store, restore after restart
+  storage/            Storage layer: types, health (degraded mode), keys; memory/, redis/, postgres/ (Drizzle)
+  settings/           Per-server settings (memory or PostgreSQL + Redis)
+  i18n/               User-facing strings
+    en.ts             English catalog (source of truth, defines the Messages type)
+    vi.ts             Vietnamese catalog (typed as Messages)
+    locales.ts        Supported locales (en, vi), fallback locale, language names
+    index.ts          getMessages, resolveLocale, Discord command localizations
+  types/ utils/       Shared types, logger, errors, pagination, embeds
+  startup/            Migrations on startup (advisory lock) and hash-based slash command registration
+  health/             Heartbeat for Docker's HEALTHCHECK (healthcheck.ts in src/ runs as node dist/healthcheck.js)
 scripts/              Bash: setup, deploy, update, backup, restore, doctor, logs (+ lib/common.sh);
                       tsx: deploy-commands.ts, check-commands.ts, db-migrate.ts
-Dockerfile            Image bot nhiều giai đoạn (Node 24 alpine, chạy bằng user node), .dockerignore đi kèm
-docker-compose.yml    Stack production: bot, lavalink-init, lavalink, postgres, redis (không publish cổng)
-docker-compose.dev.yml  Hạ tầng dev: Lavalink (+ PostgreSQL, Redis với --profile storage), bind 127.0.0.1
-Makefile              Lệnh tắt gọi scripts/ hoặc docker compose (make help)
-.github/workflows/    ci.yml (kiểm tra, build image, validate compose) và release.yml (đẩy image đa kiến trúc lên GHCR khi có tag v*)
-docs/DEPLOY.md        Hướng dẫn triển khai chi tiết
-backups/              Sao lưu PostgreSQL do backup.sh tạo (bị .gitignore loại trừ)
-drizzle/              Migration SQL đã sinh (giữ trong git, không sửa tay)
-drizzle.config.ts     Cấu hình drizzle-kit
-lavalink/             application.yml (thư mục plugins/ chỉ còn .gitkeep; plugin nằm trong volume Docker)
+Dockerfile            Multi-stage bot image (Node 24 alpine, runs as the node user), with .dockerignore
+docker-compose.yml    Production stack: bot, lavalink-init, lavalink, postgres, redis (no published ports)
+docker-compose.dev.yml  Dev infrastructure: Lavalink (+ PostgreSQL, Redis with --profile storage), binds 127.0.0.1
+Makefile              Shortcuts calling scripts/ or docker compose (make help)
+.github/workflows/    ci.yml (checks, image build, compose validation) and release.yml (pushes a multi-arch image to GHCR on v* tags)
+README.vi.md          Vietnamese README
+docs/DEPLOY.md        Detailed deployment guide (docs/DEPLOY.vi.md: Vietnamese version)
+backups/              PostgreSQL backups created by backup.sh (excluded by .gitignore)
+drizzle/              Generated SQL migrations (kept in git, do not edit by hand)
+  0000_init.sql       Initial schema
+  0001_guild_language.sql  v1.3: guild_settings.language column + check constraint
+drizzle.config.ts     drizzle-kit configuration
+lavalink/             application.yml (the plugins/ directory only holds .gitkeep; plugins live in a Docker volume)
 ```
 
-Các workflow GitHub Actions mới chỉ được viết và kiểm tra bằng actionlint; chưa chạy thật trên GitHub.
+The GitHub Actions workflows have only been written and checked with actionlint; they have not actually run on GitHub.
 
-### Thêm module mới (ví dụ moderation)
+### Adding a new module (for example moderation)
 
-1. Tạo thư mục `src/commands/moderation/` và viết mỗi lệnh là một đối tượng `Command` (`data`, `category`, `execute`, tùy chọn `cooldownSeconds`, `requirements`, `autocomplete`) giống các lệnh trong `src/commands/music/`.
-2. Thêm nhóm mới (`moderation`) vào kiểu `category` trong `src/types/command.ts` và nhãn trong `categories` ở `src/i18n/vi.ts`.
-3. Thêm lệnh vào mảng tường minh trong `src/commands/index.ts`. Không được đọc biến môi trường khi import module lệnh.
-4. Thêm chuỗi tiếng Việt vào `src/i18n/vi.ts`; nếu cần intent mới, bật trong `src/client/bot-client.ts` và cập nhật Developer Portal.
-5. Mở rộng `scripts/check-commands.ts` (thư mục quét và danh sách lệnh bắt buộc), rồi chạy `npm run check-commands`, `npm run deploy-commands`.
+1. Create the `src/commands/moderation/` directory and write each command as a `Command` object (`data`, `category`, `execute`, optional `cooldownSeconds`, `requirements`, `autocomplete`) like the commands in `src/commands/music/`.
+2. Add the new group (`moderation`) to the `category` type in `src/types/command.ts` and its label to `categories` in `src/i18n/en.ts` and `src/i18n/vi.ts`.
+3. Add the commands to the explicit array in `src/commands/index.ts`. Command modules must not read environment variables at import time.
+4. Add the strings to `src/i18n/en.ts` and their translations to `src/i18n/vi.ts` (the compiler reports missing keys); build command descriptions with `createCommand(name, (m) => ...)` / `describe(...)` so the Vietnamese localizations are attached. If a new intent is needed, enable it in `src/client/bot-client.ts` and update the Developer Portal.
+5. Extend `scripts/check-commands.ts` (scanned directories and the list of required commands), then run `npm run check-commands` and `npm run deploy-commands`.

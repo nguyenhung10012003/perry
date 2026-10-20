@@ -1,100 +1,110 @@
-# Triển khai Perry bằng Docker
+# Deploying Perry with Docker
 
-Tài liệu chi tiết cho [phần "Triển khai nhanh" của README](../README.md#triển-khai-nhanh). Quy ước: lệnh nào **không** ghi `chưa kiểm chứng` đã được chạy thật khi kiểm tra v1.2 (Docker 27.5.1, Compose 2.32.4, macOS arm64, token Discord giả). Phần cuối liệt kê những gì chưa kiểm chứng.
+**English** | [Tiếng Việt](DEPLOY.vi.md)
 
-## 1. Stack gồm những gì
+Detailed guide for the [README's "Quick deploy" section](../README.md#quick-deploy). Convention: every command **not** marked `not verified` was actually run while testing v1.2 (Docker 27.5.1, Compose 2.32.4, macOS arm64, fake Discord token). The last section lists what has not been verified.
 
-`docker compose up -d` (hoặc `make up`) chạy năm dịch vụ trong project `perry`:
+## 1. What the stack contains
 
-| Dịch vụ         | Image                                    | Vai trò                                                                                     |
-| --------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `bot`           | build từ `Dockerfile` (hoặc `BOT_IMAGE`) | Bot Discord, chạy bằng user `node`, hệ tệp gốc chỉ đọc, tự migrate và tự đăng ký lệnh slash |
-| `lavalink-init` | `ghcr.io/lavalink-devs/lavalink:4.2.2`   | Chạy một lần để chuyển quyền sở hữu volume plugin cho uid 322, rồi thoát mã 0               |
-| `lavalink`      | `ghcr.io/lavalink-devs/lavalink:4.2.2`   | Máy chủ âm thanh; lần đầu tải 3 plugin (30-90 giây)                                         |
-| `postgres`      | `postgres:18.6-alpine3.24`               | Cài đặt máy chủ và lịch sử phát tùy chọn                                                    |
-| `redis`         | `redis:8.8.3-alpine3.23`                 | Cooldown, bộ nhớ đệm, snapshot hàng đợi, hash lệnh slash                                    |
+`docker compose up -d` (or `make up`) runs five services in the `perry` project:
 
-- Mạng: `lavalink` (Lavalink và bot) và `data` (PostgreSQL, Redis và bot). Đây là hai mạng bridge thường, không phải `internal`, vì bot cần đường ra internet tới Discord. Không dịch vụ nào có `ports:`; khi kiểm tra, `PortBindings` của cả 4 container đều rỗng.
-- Volume: `postgres-data`, `redis-data` (AOF bật), `lavalink-plugins`. Tên thật có tiền tố project, ví dụ `perry_postgres-data`.
-- Log: `json-file`, tối đa 3 tệp x 10 MB cho mỗi dịch vụ.
-- Bot nhận cấu hình qua danh sách `environment` tường minh trong compose (không dùng `env_file`), vì `.env` còn chứa giá trị chỉ dành cho chạy trên máy host (`DATABASE_URL=...127.0.0.1`, `LAVALINK_HOST=127.0.0.1`). Trong container, `LAVALINK_HOST=lavalink`, `STORAGE_DRIVER=persistent`, `DATABASE_URL` và `REDIS_URL` được dựng từ mật khẩu và tên dịch vụ.
-- Compose kiểm tra `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `LAVALINK_PASSWORD`, `POSTGRES_PASSWORD`, `REDIS_PASSWORD` trên **toàn tệp**, nên mọi lệnh `docker compose` (kể cả `ps`, `logs`, `down`) báo lỗi tiếng Việt nếu `.env` thiếu hoặc rỗng một trong các biến này.
+| Service         | Image                                       | Role                                                                                              |
+| --------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `bot`           | built from `Dockerfile` (or `BOT_IMAGE`)    | The Discord bot, runs as the `node` user with a read-only root filesystem, migrates and registers slash commands by itself |
+| `lavalink-init` | `ghcr.io/lavalink-devs/lavalink:4.2.2`      | Runs once to hand the plugin volume over to uid 322, then exits with code 0                       |
+| `lavalink`      | `ghcr.io/lavalink-devs/lavalink:4.2.2`      | Audio server; downloads 3 plugins the first time (30-90 seconds)                                  |
+| `postgres`      | `postgres:18.6-alpine3.24`                  | Server settings (including the v1.3 language) and the optional play history                       |
+| `redis`         | `redis:8.8.3-alpine3.23`                    | Cooldowns, caches, queue snapshots, slash command hash                                            |
 
-## 2. Chuẩn bị máy chủ Ubuntu/Debian
+- Networks: `lavalink` (Lavalink and the bot) and `data` (PostgreSQL, Redis and the bot). Both are plain bridge networks, not `internal`, because the bot needs an outbound route to Discord. No service has `ports:`; during testing, `PortBindings` was empty for all 4 containers.
+- Volumes: `postgres-data`, `redis-data` (AOF on), `lavalink-plugins`. The real names carry the project prefix, for example `perry_postgres-data`.
+- Logs: `json-file`, at most 3 files x 10 MB per service.
+- The bot gets its configuration through an explicit `environment` list in the compose file (no `env_file`), because `.env` also contains values meant only for running on the host (`DATABASE_URL=...127.0.0.1`, `LAVALINK_HOST=127.0.0.1`). Inside the container, `LAVALINK_HOST=lavalink`, `STORAGE_DRIVER=persistent`, and `DATABASE_URL` and `REDIS_URL` are built from the passwords and service names. `DEFAULT_LOCALE` is passed through (default `en`).
+- Compose checks `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `LAVALINK_PASSWORD`, `POSTGRES_PASSWORD`, `REDIS_PASSWORD` across the **whole file**, so every `docker compose` command (including `ps`, `logs`, `down`) fails with `<VAR> is not set in .env, run ./scripts/setup.sh` if `.env` is missing or one of these variables is empty.
 
-Mục này **chưa kiểm chứng** trên VPS Linux thật. Bot chỉ kết nối đi ra nên không cần mở thêm cổng nào ngoài SSH.
+## 2. Preparing an Ubuntu/Debian server
+
+This section is **not verified** on a real Linux VPS. The bot only makes outbound connections, so no port other than SSH needs to be opened.
 
 ```bash
-# Cài Docker Engine và plugin Compose theo hướng dẫn apt chính thức (không dùng curl | sh):
-#   https://docs.docker.com/engine/install/ubuntu/    hoặc    https://docs.docker.com/engine/install/debian/
-# Kiểm tra: docker compose version   (cần v2; đã thử với 2.32.4)               # chưa kiểm chứng trên Linux
-sudo usermod -aG docker "$USER"      # chưa kiểm chứng; đăng xuất rồi đăng nhập lại
-sudo apt-get install -y git          # chưa kiểm chứng
+# Install Docker Engine and the Compose plugin following the official apt instructions (not curl | sh):
+#   https://docs.docker.com/engine/install/ubuntu/    or    https://docs.docker.com/engine/install/debian/
+# Check: docker compose version   (v2 required; tested with 2.32.4)                # not verified on Linux
+sudo usermod -aG docker "$USER"      # not verified; log out and back in
+sudo apt-get install -y git          # not verified
 
-sudo ufw allow OpenSSH               # chưa kiểm chứng
-sudo ufw enable                      # chưa kiểm chứng
+sudo ufw allow OpenSSH               # not verified
+sudo ufw enable                      # not verified
 ```
 
-Lưu ý về `ufw`: các cổng do Docker publish bỏ qua `ufw`, nhưng stack này không publish cổng nào nên không bị ảnh hưởng. Đừng tự thêm `ports:` cho Lavalink, PostgreSQL hoặc Redis.
+Note about `ufw`: ports published by Docker bypass `ufw`, but this stack publishes no ports so it is not affected. Do not add `ports:` for Lavalink, PostgreSQL or Redis.
 
-Cấu hình tối thiểu: khoảng 2 GB RAM trống (Lavalink mặc định `-Xmx1G`, chỉnh bằng `LAVALINK_JAVA_OPTS`), image bot khoảng 207 MB.
+Minimum sizing: about 2 GB of free RAM (Lavalink defaults to `-Xmx1G`, tune it with `LAVALINK_JAVA_OPTS`); the bot image is about 207 MB.
 
-## 3. Lần chạy đầu
+## 3. First run
 
 ```bash
-git clone <URL-kho-mã-của-bạn> perry && cd perry   # chưa kiểm chứng: kho thử chưa có remote
+git clone <your-repository-URL> perry && cd perry   # not verified: the test repository has no remote
 ./scripts/setup.sh
 make up
 ```
 
-Điều nên thấy:
+What you should see:
 
-- `setup.sh` hỏi token (nhập ẩn) và Application ID, in liên kết mời bot và các bước tiếp theo. Chạy lại không đổi gì. Bạn cũng có thể chạy `DISCORD_TOKEN=... DISCORD_CLIENT_ID=... ./scripts/setup.sh --non-interactive`, hoặc `--env-file đường/dẫn` để ghi `.env` ở nơi khác. Mọi giá trị được kiểm tra trước khi ghi: token chỉ gồm `[A-Za-z0-9._~+/=_-]` (từ 20 ký tự), ID là 17-20 chữ số, khóa Last.fm là 8-64 ký tự chữ-số; giá trị sai thì `.env` giữ nguyên và lệnh thoát mã 1.
-- `make up` = `./scripts/deploy.sh`: build image bot, chạy stack, rồi chờ lần lượt `lavalink-init` (thoát mã 0), `postgres`, `redis`, `lavalink` và `bot` khỏe (tối đa 300 giây, đổi bằng `--timeout SEC`). Thành công thì in `docker compose ps` và các bước kế tiếp. Nếu một dịch vụ lỗi, nó in 30 dòng log cuối của dịch vụ đó và thoát mã 1. Một dịch vụ có số lần khởi động lại tăng trong lúc chờ bị coi là `crash loop` ngay, không đợi hết thời gian.
-- Log bot mỗi lần khởi động (đã quan sát): `Database migrations applied`, `Redis connected`, `Postgres connected`; sau đó, nếu đăng nhập được, bot ghi dòng sẵn sàng và bắt đầu ghi heartbeat (phần sau đăng nhập thật **chưa kiểm chứng**). Bảng migration `drizzle.__drizzle_migrations` có đúng 1 dòng dù khởi động nhiều lần.
-- Với token giả, bot ghi **đúng một** dòng `Login failed: An invalid token was provided.`, chờ 30 giây (để Docker không dội yêu cầu lên Discord) rồi thoát để `restart: unless-stopped` khởi động lại; vì vậy `make up` báo thất bại sau khoảng 35-40 giây và `doctor.sh` hiện `FAIL bot login`.
-- Biến thể: `docker compose up -d` làm cùng việc: nó chờ postgres, redis và lavalink khỏe (lần đầu tới ~90 giây) rồi trả về, nhưng không chờ bot đăng nhập Discord, và không build với nhãn phiên bản (image mang nhãn `dev`/`unknown`). `./scripts/deploy.sh --build-only` (= `make build`) chỉ build; `--no-build` bỏ qua build/pull.
-- Lệnh slash được bot tự đăng ký khi đăng nhập thành công. Nếu đặt `DEV_GUILD_ID`, lệnh chỉ đăng ký vào máy chủ đó (tức thì); để trống thì đăng ký toàn cầu (tới ~1 giờ mới hiện). Đăng ký thật lên Discord **chưa kiểm chứng**.
+- `setup.sh` asks for the token (hidden input) and the Application ID, prints the bot invite link (`Invite link for adding the bot to a server (requires permission to add bots):`) and `Next steps:`. Re-running it changes nothing (`Using the existing config file .env (mode 600, 0 new keys added).`). You can also run `DISCORD_TOKEN=... DISCORD_CLIENT_ID=... ./scripts/setup.sh --non-interactive`, or `--env-file some/path` to write the file elsewhere. Every value is validated before writing: the token may only contain `[A-Za-z0-9._~+/=_-]` (at least 20 characters), IDs are 17-20 digits, the Last.fm key is 8-64 alphanumeric characters; with an invalid value `.env` is left untouched and the command exits with code 1.
+- `make up` = `./scripts/deploy.sh`: builds the bot image, starts the stack, then waits (`Waiting for the services to become ready (up to 300 seconds)...`) for `lavalink-init` (exit code 0), `postgres`, `redis`, `lavalink` and `bot` in turn (at most 300 seconds, change it with `--timeout SEC`). On success it prints `Perry is running.`, `docker compose ps` and the next steps. If a service fails, it prints `Last 30 log lines of '<service>':` and exits with code 1. A service whose restart count goes up while waiting is reported as a crash loop right away (`Service '<service>' keeps restarting (crash loop).`), without waiting for the timeout.
+- Bot log on every start (observed): `Database migrations applied`, `Redis connected`, `Postgres connected`; then, if the login works, the bot logs its ready line and starts writing the heartbeat (the part after a real login is **not verified**). The `drizzle.__drizzle_migrations` table has exactly 1 row no matter how many times it starts (v1.3: 2 rows, adding `0001_guild_language`).
+- With a fake token, the bot logs **exactly one** `Login failed: An invalid token was provided.` line, waits 30 seconds (so Docker does not hammer Discord) and exits so that `restart: unless-stopped` restarts it; that is why `make up` reports failure after about 35-40 seconds (`Deployment did not succeed.`) and `doctor.sh` shows `FAIL bot login`.
+- Variant: `docker compose up -d` does the same job: it waits for postgres, redis and lavalink to become healthy (up to ~90 seconds the first time) and then returns, but does not wait for the bot to log in to Discord, and does not build with version labels (the image is labeled `dev`/`unknown`). `./scripts/deploy.sh --build-only` (= `make build`) only builds; `--no-build` skips the build/pull.
+- The bot registers the slash commands by itself after a successful login. If `DEV_GUILD_ID` is set, the commands are only registered in that server (instantly); when it is empty they are registered globally (up to ~1 hour to show up). Real registration with Discord is **not verified**.
 
-Xem log và trạng thái:
+Logs and status:
 
 ```bash
-./scripts/logs.sh                 # mọi dịch vụ, 200 dòng cuối rồi theo dõi
-./scripts/logs.sh bot --tail 50   # một dịch vụ
+./scripts/logs.sh                 # every service, last 200 lines, then follow
+./scripts/logs.sh bot --tail 50   # one service
 make ps
 ```
 
-## 4. Cập nhật và quay lui
+## 4. Updating and rolling back
 
 ```bash
-./scripts/update.sh --dry-run     # chỉ in các bước
+./scripts/update.sh --dry-run     # only prints the steps
 ./scripts/update.sh               # = make update
 ```
 
-`update.sh` làm theo thứ tự: sao lưu PostgreSQL (nếu stack đang chạy và khỏe; lần cài đầu thì bỏ qua), `git pull --ff-only` (chỉ khi là bản clone git có commit; nếu không, in `Không phải bản clone git, bỏ qua git pull`), build lại hoặc pull `BOT_IMAGE`, `docker compose up -d --remove-orphans` (chỉ dịch vụ có thay đổi bị tạo lại), rồi chờ khỏe. Tùy chọn: `--skip-backup`, `--timeout SEC`.
+`update.sh` works in this order: back up PostgreSQL (when the stack is running and healthy; skipped on a first install), `git pull --ff-only` (only for a git clone with commits; otherwise it prints `Not a git clone, skipping git pull.`), rebuild or pull `BOT_IMAGE`, `docker compose up -d --remove-orphans` (only changed services are recreated), then wait until healthy. Options: `--skip-backup`, `--timeout SEC`. On success it prints `Update complete. Version: X (revision Y).`
 
-- Nếu `git pull --ff-only` thất bại (nhánh phân kỳ, mất mạng), lệnh dừng với `Chưa có gì bị thay đổi` và mã 1.
-- Nếu bước sau đó thất bại, lệnh in hướng dẫn quay lui và thoát mã 1; nó không xóa gì:
-  1. `git checkout <commit-trước>` (mã commit được in ra) rồi `./scripts/deploy.sh`;
-  2. nếu migration của bản mới đã đổi lược đồ, khôi phục cả cơ sở dữ liệu: `./scripts/restore.sh backups/<bản-sao-lưu-vừa-tạo>.dump`. Migration chỉ đi tiến, mã cũ không tự hạ lược đồ.
-- Nhãn `revision` của image là SHA commit sau khi pull, nên `docker image inspect` cho biết đang chạy bản nào.
+- If `git pull --ff-only` fails (diverged branch, network down), the command stops with `Nothing has been changed yet.` and exit code 1.
+- If a later step fails, the command prints `Update failed. No data was deleted. To roll back:` followed by the rollback steps and exits with code 1; it deletes nothing:
+  1. `git checkout <previous-commit>` (the commit hash is printed) and then `./scripts/deploy.sh`;
+  2. if the new version's migrations changed the schema, restore the database as well: `./scripts/restore.sh backups/<the-backup-just-created>.dump`. Migrations only go forward; old code does not downgrade the schema by itself.
+- The image's `revision` label is the commit SHA after the pull, so `docker image inspect` tells you which version is running.
 
-## 5. Sao lưu, khôi phục, giữ bản
+### Upgrading to v1.3
+
+- `./scripts/update.sh` backs up PostgreSQL first, as always.
+- The bot applies migration `0001_guild_language` (adds the `guild_settings.language` column) automatically on startup. When running the bot on the host instead of Docker, run `npm run db:migrate` before starting it; otherwise the bot logs `Database schema is missing or outdated` and runs in degraded mode.
+- Optional: set `DEFAULT_LOCALE=vi` in `.env` to keep Vietnamese as the default (v1.3 defaults to English). Re-run `./scripts/setup.sh` to append the new key to an existing `.env` (it prints `Added new key: DEFAULT_LOCALE`), then `./scripts/deploy.sh`.
+- The slash commands are re-registered once because their definitions changed (English descriptions with Vietnamese localizations, the new `/settings language` subcommand).
+- Bot replies and channel messages switch to English unless the server picks a language with `/settings language` or `DEFAULT_LOCALE=vi` is set. Logs are in English.
+
+## 5. Backups, restore, retention
 
 ```bash
-./scripts/backup.sh                 # = make backup. In đường dẫn tệp và dung lượng
-./scripts/backup.sh --keep 7        # giữ 7 bản (mặc định: BACKUP_KEEP trong .env, rồi 14)
-./scripts/backup.sh --quiet         # chỉ in đường dẫn (dùng trong script/cron)
+./scripts/backup.sh                 # = make backup. Prints the file path and size
+./scripts/backup.sh --keep 7        # keep 7 backups (default: BACKUP_KEEP in .env, then 14)
+./scripts/backup.sh --quiet         # only print the path (for scripts/cron)
 ./scripts/restore.sh backups/perry-YYYYmmdd-HHMMSS.dump     # = make restore FILE=...
-./scripts/restore.sh --latest --yes # bản mới nhất, không hỏi lại
+./scripts/restore.sh --latest --yes # newest backup, no confirmation
 ```
 
-- `backup.sh` cần dịch vụ `postgres` đang khỏe. Nó chạy `pg_dump -Fc` trong container, ghi vào tệp tạm trong `backups/` rồi đổi tên thành `backups/perry-YYYYmmdd-HHMMSS.dump`, kiểm tra bằng `pg_restore --list`, đặt quyền `600` (thư mục `700`). Thư mục `backups/` bị `.gitignore` loại trừ.
-- Giữ bản: chỉ các tệp có tên đúng mẫu `perry-YYYYmmdd-HHMMSS.dump` bị dọn khi vượt quá `BACKUP_KEEP`. Tệp khác trong thư mục, kể cả `perry-prerestore-*.dump`, không bao giờ bị xóa tự động.
-- `restore.sh` **ghi đè** dữ liệu PostgreSQL hiện tại. Nó kiểm tra tệp, yêu cầu gõ đúng `yes` (hoặc `--yes`, hoặc `ASSUME_YES=1`), từ chối chạy khi không có terminal mà thiếu `--yes`, tự tạo `backups/perry-prerestore-<giờ>.dump` trước, dừng bot, chạy `pg_restore --clean --if-exists --no-owner --no-privileges`, rồi khởi động lại bot. Nếu `pg_restore` lỗi, bot được để dừng và lệnh in cách thử lại bằng bản sao lưu an toàn. Đã thử vòng: chèn dòng đánh dấu, sao lưu, xóa dòng, khôi phục, dòng trở lại.
-- Redis **không** được sao lưu: dữ liệu trong đó đều tái tạo được (cooldown, bộ nhớ đệm, snapshot hàng đợi sống 6 giờ, hash lệnh slash).
-- Lên lịch sao lưu hằng ngày bằng cron (ví dụ `0 4 * * * cd /đường/dẫn/perry && ./scripts/backup.sh --quiet >> /dev/null`): chưa kiểm chứng.
-- Chép các tệp `backups/*.dump` sang nơi khác (máy khác, kho lưu trữ đối tượng): chúng chứa dữ liệu thật, bảo vệ như `.env`.
+- `backup.sh` needs a healthy `postgres` service. It runs `pg_dump -Fc` in the container, writes to a temporary file in `backups/` and renames it to `backups/perry-YYYYmmdd-HHMMSS.dump`, checks it with `pg_restore --list` and sets mode `600` (directory `700`); it prints `Backed up: <file> (size)`. The `backups/` directory is excluded by `.gitignore`.
+- Retention: only files named exactly `perry-YYYYmmdd-HHMMSS.dump` are pruned beyond `BACKUP_KEEP`. Other files in the directory, including `perry-prerestore-*.dump`, are never deleted automatically.
+- `restore.sh` **overwrites** the current PostgreSQL data. It checks the file, requires you to type exactly `yes` (`Continue with the restore?` ... `Type "yes" to continue:`, or `--yes`, or `ASSUME_YES=1`), refuses to run without a terminal when `--yes` is missing, first creates `backups/perry-prerestore-<time>.dump`, stops the bot, runs `pg_restore --clean --if-exists --no-owner --no-privileges`, then starts the bot again (`Restored from <file>. Bot: <state>.`). If `pg_restore` fails, the bot is kept stopped (`pg_restore reported an error. The bot is KEPT STOPPED.`) and the command prints how to retry with the safety backup. Round trip tested: insert a marker row, back up, delete the row, restore, the row is back.
+- Redis is **not** backed up: everything in it can be rebuilt (cooldowns, caches, queue snapshots that live 6 hours, the slash command hash).
+- Scheduling a daily backup with cron (for example `0 4 * * * cd /path/to/perry && ./scripts/backup.sh --quiet >> /dev/null`): not verified.
+- Copy the `backups/*.dump` files somewhere else (another machine, object storage): they contain real data, protect them like `.env`.
 
 ## 6. `doctor.sh`
 
@@ -102,126 +112,129 @@ make ps
 ./scripts/doctor.sh      # = make doctor
 ```
 
-In bảng `STATUS / CHECK / CHI TIẾT` với `PASS`, `FAIL`, `WARN` hoặc `SKIP`, thoát mã 1 nếu có ít nhất một `FAIL`. Ví dụ (đầu ra thật với token giả; một vài hàng lược bớt):
+Prints a `STATUS / CHECK / DETAIL` table with `PASS`, `FAIL`, `WARN` or `SKIP`, and exits with code 1 if there is at least one `FAIL`. Example (rows from a real v1.2 run with a fake token, rewritten with the v1.3 English messages; a few rows omitted; with v1.3 the migrations row reports 2):
 
 ```
-STATUS CHECK                CHI TIẾT
+STATUS CHECK                DETAIL
 PASS   docker               Engine 27.5.1
 PASS   env permissions      600
-PASS   env required         đủ: DISCORD_TOKEN DISCORD_CLIENT_ID LAVALINK_PASSWORD POSTGRES_PASSWORD REDIS_PASSWORD
-PASS   lavalink-init        đã chạy xong (exit 0), quyền thư mục plugin đã đúng
-PASS   container postgres   khỏe (khởi động lại: 0 lần)
-WARN   container bot        đang khởi động (khởi động lại: 1 lần)
-PASS   lavalink plugins     youtube, lavasrc, lavalyrics đã nạp
-PASS   postgres migrations  1 migration đã áp dụng
-FAIL   bot login            log có 'Login failed': token sai hoặc bị reset; sửa DISCORD_TOKEN trong .env rồi ./scripts/deploy.sh
-PASS   published ports      không có cổng nào mở ra máy host
+PASS   env required         all set: DISCORD_TOKEN DISCORD_CLIENT_ID LAVALINK_PASSWORD POSTGRES_PASSWORD REDIS_PASSWORD
+PASS   lavalink-init        completed (exit 0), plugin directory permissions are correct
+PASS   container postgres   healthy (restarts: 0)
+WARN   container bot        starting (restarts: 1)
+PASS   lavalink plugins     youtube, lavasrc, lavalyrics loaded
+PASS   postgres migrations  1 migration(s) applied
+FAIL   bot login            logs contain 'Login failed': the token is wrong or was reset; fix DISCORD_TOKEN in .env, then ./scripts/deploy.sh
+PASS   published ports      no ports are exposed to the host
 ```
 
-- Nó chỉ in tên biến và dạng của token, không bao giờ in giá trị. Mật khẩu Lavalink được mở rộng bên trong container, không xuất hiện ở máy host.
-- Nó tìm container qua nhãn của Compose, nên chạy được cả khi `.env` thiếu hoặc stack đang dừng (khi đó các hàng là `FAIL ... chưa chạy` hoặc `SKIP`, không bị lỗi).
-- Hàng `bot login` chỉ nhận ra dòng `Login failed` trong 200 dòng log gần nhất. Một container bot `healthy` chỉ có nghĩa là heartbeat còn mới; với bot thật điều này cần đăng nhập Discord thành công (**chưa kiểm chứng**).
+The summary line is `N error(s), M warning(s). See ./scripts/logs.sh <service> for details.`, `No serious errors, M warning(s).` or `All checks passed.`
 
-## 7. Giới hạn tài nguyên
+- It only prints variable names and the shape of the token, never values. The Lavalink password is expanded inside the container and never appears on the host.
+- It finds containers through Compose labels, so it works even when `.env` is missing or the stack is stopped (the rows are then `FAIL ... not running` or `SKIP`, without crashing).
+- The `bot login` row only detects a `Login failed` line in the last 200 log lines. A `healthy` bot container only means the heartbeat is fresh; with a real bot that requires a successful Discord login (**not verified**).
 
-`docker-compose.yml` có sẵn ví dụ đang để dạng chú thích cho `bot` và `lavalink`. Bỏ chú thích và chỉnh theo VPS:
+## 7. Resource limits
+
+`docker-compose.yml` contains a commented-out example for `bot` and `lavalink`. Uncomment it and tune it for your VPS:
 
 ```yaml
 deploy:
   resources:
     limits:
       cpus: "2.0"
-      memory: 1536M # Lavalink: giữ lớn hơn heap -Xmx trong LAVALINK_JAVA_OPTS
+      memory: 1536M # Lavalink: keep it larger than the -Xmx heap in LAVALINK_JAVA_OPTS
 ```
 
-Chưa kiểm chứng việc áp dụng các giới hạn này. Nếu hạ `-Xmx`, đặt `LAVALINK_JAVA_OPTS=-Xmx512M` trong `.env` rồi `docker compose up -d`.
+Applying these limits has not been verified. To lower `-Xmx`, set `LAVALINK_JAVA_OPTS=-Xmx512M` in `.env`, then `docker compose up -d`.
 
-## 8. Dùng image dựng sẵn (`BOT_IMAGE`, GHCR)
+## 8. Using a prebuilt image (`BOT_IMAGE`, GHCR)
 
-Mặc định stack build bot từ mã nguồn, không cần tài khoản registry. Nếu chủ dự án phát hành image, đặt trong `.env`:
+By default the stack builds the bot from source and needs no registry account. If the project owner publishes images, set in `.env`:
 
 ```
-BOT_IMAGE=ghcr.io/<chủ-sở-hữu>/<kho>:1.2.0
+BOT_IMAGE=ghcr.io/<owner>/<repo>:1.3.0
 ```
 
-Khi `BOT_IMAGE` được đặt, `deploy.sh` và `update.sh` chạy `docker compose pull bot` thay vì build. Chỉ đường lỗi (không kéo được image) đã được thử; việc kéo image thật **chưa kiểm chứng**.
+When `BOT_IMAGE` is set, `deploy.sh` and `update.sh` run `docker compose pull bot` instead of building. Only the failure path (the image cannot be pulled) has been tried; pulling a real image is **not verified**.
 
-- Workflow `.github/workflows/release.yml` build `linux/amd64` và `linux/arm64` khi đẩy tag `v*` và đẩy lên `ghcr.io/<github.repository viết thường>` với các tag `<phiên bản>`, `<chính>.<phụ>` và `latest` (`latest` chỉ được gắn cho bản ổn định, không gắn cho tag tiền phát hành như `v1.3.0-rc1`), bằng `GITHUB_TOKEN` (quyền `packages: write` chỉ ở cấp job). Workflow này chỉ mới được viết và kiểm tra bằng actionlint; chưa chạy trên GitHub.
-- Gói GHCR mới tạo thường ở chế độ riêng tư. Trên máy chủ cần `docker login ghcr.io` bằng token có quyền `read:packages`, hoặc đổi gói sang công khai trong cài đặt gói trên GitHub (chưa kiểm chứng).
-- Workflow `ci.yml` (mỗi lần push lên `main` và mỗi pull request) chạy typecheck, lint, build, `check-commands`, shellcheck, `docker build` không đẩy, `docker compose config` cho cả hai tệp compose và so sánh tag image giữa chúng. Các lệnh shell của nó đã được chạy lại cục bộ; chính workflow chưa chạy trên GitHub.
+- The `.github/workflows/release.yml` workflow builds `linux/amd64` and `linux/arm64` when a `v*` tag is pushed and pushes to `ghcr.io/<lowercased github.repository>` with the tags `<version>`, `<major>.<minor>` and `latest` (`latest` is only applied to stable releases, not to pre-release tags such as `v1.3.0-rc1`), using `GITHUB_TOKEN` (the `packages: write` permission is only granted at job level). This workflow has only been written and checked with actionlint; it has not run on GitHub.
+- A newly created GHCR package is usually private. On the server, run `docker login ghcr.io` with a token that has `read:packages`, or make the package public in its settings on GitHub (not verified).
+- The `ci.yml` workflow (every push to `main` and every pull request) runs typecheck, lint, build, `check-commands`, shellcheck, a `docker build` without pushing, `docker compose config` for both compose files and a comparison of the image tags between them (on a mismatch it prints `Image tags differ between docker-compose.yml and docker-compose.dev.yml:`). Its shell commands have been re-run locally; the workflow itself has not run on GitHub.
 
-## 9. Hạ tầng phát triển
+## 9. Development infrastructure
 
-`docker-compose.dev.yml` chỉ chứa Lavalink, PostgreSQL và Redis cho `npm run dev`, bind `127.0.0.1`.
+`docker-compose.dev.yml` only contains Lavalink, PostgreSQL and Redis for `npm run dev`, bound to `127.0.0.1`.
 
 ```bash
 make dev-infra            # Lavalink + PostgreSQL + Redis (= docker compose -f docker-compose.dev.yml --profile storage up -d)
-make dev-infra-down       # dừng, giữ dữ liệu
-docker compose -f docker-compose.dev.yml up -d lavalink    # chỉ Lavalink, chế độ STORAGE_DRIVER=memory
+make dev-infra-down       # stop, keep the data
+docker compose -f docker-compose.dev.yml up -d lavalink    # Lavalink only, STORAGE_DRIVER=memory mode
 ```
 
-Chi tiết cổng, biến và cách chạy bot trên máy host xem README, mục "Chạy hạ tầng phát triển". Hai tệp compose phải giữ cùng tag image; CI kiểm tra điều đó.
+For ports, variables and how to run the bot on the host, see the [README section "Running the development infrastructure"](../README.md#running-the-development-infrastructure-lavalink-postgresql-redis). When running on the host, remember `npm run db:migrate` after upgrading to v1.3. Both compose files must keep the same image tags; CI checks this.
 
-## 10. Nâng cấp từ stack dev v1.1
+## 10. Upgrading from the v1.1 dev stack
 
-Stack dev của v1.1 dùng project `perry-lavalink` với volume `postgres-data`/`redis-data` (tên đầy đủ có tiền tố `perry-lavalink_`), còn stack production dùng project `perry` với volume riêng, nên dữ liệu **không** tự chuyển sang. `docker-compose.dev.yml` giữ nguyên tên project, volume và mạng của v1.1, nên dữ liệu dev cũ vẫn gắn lại khi bạn chạy `make dev-infra`. Cache plugin trước đây là bind mount `lavalink/plugins/`; nay là volume nên plugin tải lại một lần.
+The v1.1 dev stack used the `perry-lavalink` project with the `postgres-data`/`redis-data` volumes (full names prefixed with `perry-lavalink_`), while the production stack uses the `perry` project with its own volumes, so the data is **not** carried over automatically. `docker-compose.dev.yml` keeps the v1.1 project, volume and network names, so old dev data is reattached when you run `make dev-infra`. The plugin cache used to be a `lavalink/plugins/` bind mount; it is now a volume, so the plugins are downloaded once more.
 
-Nếu muốn mang cài đặt máy chủ từ stack dev sang production (toàn bộ quy trình dưới đây **chưa kiểm chứng** vì cần dữ liệu v1.1 thật):
+To move server settings from the dev stack to production (the whole procedure below is **not verified** because it needs real v1.1 data):
 
 ```bash
-# 1. Bật stack dev cũ và xuất dữ liệu (tên tệp đúng mẫu để --latest nhận ra)
+# 1. Start the old dev stack and export the data (file name matching the pattern so --latest finds it)
 make dev-infra
 mkdir -p backups
-docker compose -f docker-compose.dev.yml exec -T postgres pg_dump -U perry -d perry -Fc > backups/perry-$(date +%Y%m%d-%H%M%S).dump   # chưa kiểm chứng
+docker compose -f docker-compose.dev.yml exec -T postgres pg_dump -U perry -d perry -Fc > backups/perry-$(date +%Y%m%d-%H%M%S).dump   # not verified
 make dev-infra-down
 
-# 2. Chạy stack production rồi khôi phục vào đó
+# 2. Start the production stack and restore into it
 ./scripts/setup.sh
 make up
-./scripts/restore.sh --latest      # chưa kiểm chứng với dữ liệu v1.1 thật
+./scripts/restore.sh --latest      # not verified with real v1.1 data
 ```
 
-Mật khẩu PostgreSQL trong `.env` phải là mật khẩu của stack dev cũ khi xuất dữ liệu (dump không chứa mật khẩu, nên khôi phục vào stack mới dùng mật khẩu mới là bình thường). Kiểm tra lược đồ: sau khôi phục, bot tự chạy migration còn thiếu khi khởi động lại.
+The PostgreSQL password in `.env` must be the old dev stack's password while exporting (the dump contains no passwords, so restoring into a new stack with a new password is fine). Schema check: after the restore, the bot runs any missing migrations (including `0001_guild_language`) when it restarts.
 
-## 11. Danh sách kiểm tra bảo mật
+## 11. Security checklist
 
-- [ ] `.env` có quyền `600` và không nằm trong git (`doctor.sh` kiểm tra quyền).
-- [ ] Token Discord chưa từng bị dán vào log, issue hay chat. Nếu lộ: **Reset Token**, sửa `.env`, `./scripts/deploy.sh`.
-- [ ] Không có `ports:` cho Lavalink, PostgreSQL, Redis (`doctor.sh` hàng `published ports`). Trên VPS chỉ SSH được mở.
-- [ ] Chỉ người tin cậy thuộc nhóm `docker` (nhóm này tương đương root; mật khẩu nằm trong biến môi trường của container và tham số tiến trình Redis, đọc được qua `docker inspect`).
-- [ ] Thư mục `backups/` có quyền `700`, các tệp `600`, và bản sao ngoài máy được bảo vệ tương đương.
-- [ ] Bật cập nhật bảo mật cho hệ điều hành VPS và chạy `./scripts/update.sh` định kỳ để nhận bản vá của image bot.
-- [ ] Mật khẩu đổi bằng cách sửa `.env` rồi `docker compose up -d` (chưa kiểm chứng trên stack đang chạy). Riêng `POSTGRES_PASSWORD` chỉ có tác dụng khi volume còn trống: sau lần chạy đầu, đổi bằng `ALTER USER` trong PostgreSQL.
-- [ ] Nếu chạy bot công khai: xem các giới hạn của bộ lọc SSRF trong README, mục "Bảo mật".
+- [ ] `.env` has mode `600` and is not in git (`doctor.sh` checks the mode).
+- [ ] The Discord token has never been pasted into logs, issues or chat. If it leaked: **Reset Token**, fix `.env`, `./scripts/deploy.sh`.
+- [ ] No `ports:` for Lavalink, PostgreSQL, Redis (`doctor.sh` row `published ports`). On the VPS only SSH is open.
+- [ ] Only trusted people are in the `docker` group (it is equivalent to root; the passwords are in the containers' environment variables and in the Redis process arguments, readable with `docker inspect`).
+- [ ] The `backups/` directory has mode `700`, the files `600`, and off-machine copies are protected equally.
+- [ ] Security updates are enabled for the VPS operating system and `./scripts/update.sh` is run regularly to pick up bot image patches.
+- [ ] Passwords are changed by editing `.env`, then `docker compose up -d` (not verified on a running stack). `POSTGRES_PASSWORD` only takes effect while the volume is empty: after the first run, change it with `ALTER USER` in PostgreSQL.
+- [ ] If you run the bot publicly: read the limits of the SSRF filter in the [README section "Security"](../README.md#security).
 
-Đã kiểm tra trên image và stack thật: bot chạy uid 1000 (`node`), hệ tệp gốc chỉ đọc (ghi vào `/` bị từ chối, `/tmp` ghi được), `cap_drop: ALL`, `no-new-privileges`, `init: true`; token và mật khẩu sinh ra không xuất hiện trong log của stack, `docker history` hay `docker image inspect` của image bot.
+Checked on the real image and stack: the bot runs as uid 1000 (`node`), with a read-only root filesystem (writing to `/` is denied, `/tmp` is writable), `cap_drop: ALL`, `no-new-privileges`, `init: true`; generated tokens and passwords do not appear in the stack logs, in `docker history` or in `docker image inspect` of the bot image.
 
-## 12. arm64 và amd64
+## 12. arm64 and amd64
 
-- Cả bốn image gốc (`node:24.22.0-alpine3.24`, `ghcr.io/lavalink-devs/lavalink:4.2.2`, `postgres:18.6-alpine3.24`, `redis:8.8.3-alpine3.23`) có bản `linux/amd64` và `linux/arm64`; kiểm tra bằng `docker buildx imagetools inspect`.
-- Cây phụ thuộc runtime của bot không có module native (77 gói, không gói nào có script cài đặt hoặc ràng buộc `os`/`cpu`), nên `node_modules` dùng chung cho mọi kiến trúc. `Dockerfile` có bước kiểm tra làm hỏng build nếu sau này có gói runtime như vậy.
-- Đã build thật trên arm64 (máy thử). Image `linux/amd64` đã build và chạy qua giả lập, in ra `x64`; chạy trực tiếp trên máy amd64 **chưa kiểm chứng**.
-- `docker buildx build --platform linux/amd64,linux/arm64` một lệnh không chạy được với driver `docker` mặc định của máy thử ("Multi-platform build is not supported for the docker driver"); GitHub Actions dùng `setup-buildx-action` nên không gặp giới hạn này, nhưng chưa chạy.
+- All four base images (`node:24.22.0-alpine3.24`, `ghcr.io/lavalink-devs/lavalink:4.2.2`, `postgres:18.6-alpine3.24`, `redis:8.8.3-alpine3.23`) have `linux/amd64` and `linux/arm64` variants; checked with `docker buildx imagetools inspect`.
+- The bot's runtime dependency tree has no native modules (77 packages, none with install scripts or `os`/`cpu` constraints), so `node_modules` is shared across architectures. The `Dockerfile` has a check step that fails the build if such a runtime package shows up later.
+- Actually built on arm64 (the test machine). The `linux/amd64` image was built and run through emulation and printed `x64`; running it directly on an amd64 machine is **not verified**.
+- A single `docker buildx build --platform linux/amd64,linux/arm64` command does not work with the test machine's default `docker` driver ("Multi-platform build is not supported for the docker driver"); GitHub Actions uses `setup-buildx-action` so it does not hit this limit, but it has not run.
 
-## 13. Gỡ sạch
+## 13. Complete removal
 
 ```bash
-make down                        # dừng, giữ dữ liệu
-docker compose down -v           # XÓA luôn volume PostgreSQL, Redis và cache plugin (không hoàn tác)
+make down                        # stop, keep the data
+docker compose down -v           # ALSO DELETES the PostgreSQL, Redis and plugin cache volumes (cannot be undone)
 ```
 
-Hãy chạy `./scripts/backup.sh` và chép bản sao ra ngoài trước khi dùng `down -v`.
+Run `./scripts/backup.sh` and copy the backup off the machine before using `down -v`.
 
-## 14. Chưa được kiểm chứng
+## 14. Not verified
 
-- Đăng nhập Discord thật trong container: heartbeat sau khi sẵn sàng, `HEALTHCHECK` chuyển `healthy`, đăng ký lệnh slash lên Discord, phát âm thanh thật.
-- Tắt êm khi có gateway và player thoại thật (mới thử đường tắt trước khi đăng nhập).
-- VPS Linux thật: cài Docker từ apt, `ufw`, `usermod`, quyền khi bind mount trên Linux, bash/GNU userland cho `backup.sh`, `restore.sh`, `update.sh`, `doctor.sh` (macOS bash 3.2 đã chạy tất cả; `setup.sh` còn chạy trong Debian 12).
-- Windows (WSL2, Git Bash), Docker Compose cũ hơn 2.32.
-- `git clone` từ kho từ xa thật; `git pull --ff-only` mới thử với kho giả trong `/tmp`.
-- Kéo image từ registry thật bằng `BOT_IMAGE`; GHCR (đẩy image, quyền, chế độ hiển thị gói).
-- Chạy `ci.yml` và `release.yml` trên GitHub (chỉ actionlint và chạy lại cục bộ các lệnh shell); build đa nền tảng bằng một lệnh buildx cục bộ.
-- Chạy image `linux/amd64` trực tiếp trên máy amd64.
-- Cron sao lưu, xoay mật khẩu trên stack đang chạy, giới hạn tài nguyên mẫu, quy trình chuyển dữ liệu từ stack dev v1.1, khôi phục vào cơ sở dữ liệu có lược đồ khác với mã hiện tại.
-- Thời gian build lần đầu trên máy trắng; dung lượng đĩa và RAM thực tế trên VPS.
-- Mọi mục đã nêu trong README, mục "Những gì chưa được kiểm chứng runtime" (v1 và v1.1) vẫn còn hiệu lực.
+- A real Discord login inside the container: the heartbeat after ready, `HEALTHCHECK` turning `healthy`, registering the slash commands with Discord, real audio playback.
+- Graceful shutdown with a real gateway and voice player (only the shutdown path before login was tried).
+- A real Linux VPS: installing Docker from apt, `ufw`, `usermod`, permissions for bind mounts on Linux, bash/GNU userland for `backup.sh`, `restore.sh`, `update.sh`, `doctor.sh` (macOS bash 3.2 ran all of them; `setup.sh` was also run in Debian 12).
+- Windows (WSL2, Git Bash), Docker Compose older than 2.32.
+- `git clone` from a real remote repository; `git pull --ff-only` was only tried with a fake repository in `/tmp`.
+- Pulling an image from a real registry with `BOT_IMAGE`; GHCR (pushing images, permissions, package visibility).
+- Running `ci.yml` and `release.yml` on GitHub (only actionlint and local re-runs of the shell commands); a local multi-platform build with a single buildx command.
+- Running the `linux/amd64` image directly on an amd64 machine.
+- Cron backups, rotating passwords on a running stack, the sample resource limits, the data migration procedure from the v1.1 dev stack, restoring into a database whose schema differs from the current code.
+- First build time on a clean machine; real disk and RAM usage on a VPS.
+- v1.3: how localized commands render in real Discord clients, `/settings language` in a real server, upgrading a real running stack (details in the README).
+- Every item listed in the [README section "What has not been verified at runtime"](../README.md#what-has-not-been-verified-at-runtime) (v1 and v1.1) still applies.

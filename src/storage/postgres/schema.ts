@@ -25,12 +25,14 @@ export const guildSettings = pgTable(
     autoplayMode: text('autoplay_mode').notNull().default('related'),
     defaultTextChannelId: text('default_text_channel_id'),
     defaultVoiceChannelId: text('default_voice_channel_id'),
+    language: text('language'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     check('guild_settings_default_volume_check', sql`${table.defaultVolume} between 0 and 150`),
     check('guild_settings_autoplay_mode_check', sql`${table.autoplayMode} in ('related', 'seed')`),
+    check('guild_settings_language_check', sql`${table.language} in ('en', 'vi')`),
   ],
 );
 

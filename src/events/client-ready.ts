@@ -1,6 +1,6 @@
 import { ActivityType, Events } from "discord.js";
 import { commands } from "../commands/index.js";
-import { t } from "../i18n/index.js";
+import { getMessages } from "../i18n/index.js";
 import {
   createRestPut,
   serializeCommands,
@@ -12,6 +12,8 @@ export const clientReady: BotEvent<Events.ClientReady> = {
   name: Events.ClientReady,
   once: true,
   async execute(client, readyClient) {
+    // The presence is global (not per guild), so it uses DEFAULT_LOCALE.
+    const t = getMessages(client.config.defaultLocale);
     readyClient.user.setPresence({
       activities: [{ name: t.presence.activity, type: ActivityType.Custom }],
       status: "online",

@@ -7,7 +7,6 @@ import type {
 import type { Guild } from "discord.js";
 import type { BotClient } from "../client/bot-client.js";
 import { NODE_BACKOFF_MS } from "../config/constants.js";
-import { t } from "../i18n/index.js";
 import { safeError, UserError } from "../utils/errors.js";
 import type { Logger } from "../utils/logger.js";
 import { childLogger } from "../utils/logger.js";
@@ -160,7 +159,7 @@ export class MusicService {
 
   /** Throws a UserError when no Lavalink node is usable. */
   ensureReady(): void {
-    if (!this.ready) throw new UserError(t.errors.noNode);
+    if (!this.ready) throw new UserError((t) => t.errors.noNode);
   }
 
   /** First connected node (used for searches and latency checks), or null. */

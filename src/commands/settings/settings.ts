@@ -1,43 +1,49 @@
 import { MessageFlags, PermissionFlagsBits } from "discord.js";
 import { MAX_VOLUME } from "../../config/constants.js";
-import { t } from "../../i18n/index.js";
+import { getMessages, isLocale, LOCALE_NAMES, resolveLocale } from "../../i18n/index.js";
+import { refreshNowPlaying } from "../../music/now-playing.js";
 import type { Command } from "../../types/command.js";
 import { baseEmbed } from "../../utils/embeds.js";
 import { replyError, replyInfo } from "../../utils/respond.js";
-import { createCommand } from "../builder.js";
+import { choice, createCommand, describe } from "../builder.js";
 
 export const settings: Command = {
-  data: createCommand("settings", t.commands.settings.description)
+  data: createCommand("settings", (m) => m.commands.settings.description)
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((sub) =>
-      sub.setName("view").setDescription(t.commands.settings.view.description),
+      describe(sub.setName("view"), (m) => m.commands.settings.view.description),
     )
     .addSubcommand((sub) =>
-      sub
-        .setName("dj-role")
-        .setDescription(t.commands.settings.djRole.description)
+      describe(sub.setName("dj-role"), (m) => m.commands.settings.djRole.description)
         .addRoleOption((option) =>
-          option
-            .setName("role")
-            .setDescription(t.commands.settings.djRole.role),
+          describe(option.setName("role"), (m) => m.commands.settings.djRole.role),
         ),
     )
     .addSubcommand((sub) =>
-      sub
-        .setName("default-volume")
-        .setDescription(t.commands.settings.defaultVolume.description)
+      describe(sub.setName("default-volume"), (m) => m.commands.settings.defaultVolume.description)
         .addIntegerOption((option) =>
-          option
-            .setName("level")
-            .setDescription(t.commands.settings.defaultVolume.level)
+          describe(option.setName("level"), (m) => m.commands.settings.defaultVolume.level)
             .setRequired(true)
             .setMinValue(0)
             .setMaxValue(MAX_VOLUME),
         ),
+    )
+    .addSubcommand((sub) =>
+      describe(sub.setName("language"), (m) => m.commands.settings.language.description)
+        .addStringOption((option) =>
+          describe(option.setName("locale"), (m) => m.commands.settings.language.locale)
+            .setRequired(true)
+            .addChoices(
+              // Language names are autonyms, identical in every locale.
+              { name: LOCALE_NAMES.en, value: "en" },
+              { name: LOCALE_NAMES.vi, value: "vi" },
+              choice("default", (m) => m.commands.settings.language.default),
+            ),
+        ),
     ),
   category: "settings",
   cooldownSeconds: 3,
-  async execute({ interaction, client }) {
+  async execute({ interaction, client, t }) {
     // Guild admins can override command permissions in Integrations, so re-check here (Administrator implies it).
     if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
       await replyError(interaction, t.settings.noPermission);
@@ -78,6 +84,13 @@ export const settings: Command = {
               value: t.commands.autoplay.modes[current.autoplayMode],
               inline: true,
             },
+            {
+              name: t.settings.language,
+              value: current.language
+                ? LOCALE_NAMES[current.language]
+                : t.settings.languageDefault(LOCALE_NAMES[client.config.defaultLocale]),
+              inline: true,
+            },
           );
         await interaction.reply({
           embeds: [embed],
@@ -110,6 +123,28 @@ export const settings: Command = {
         // Only affects players created later; an existing player keeps its current volume.
         await client.settings.update(guildId, { defaultVolume: level });
         await replyInfo(interaction, t.settings.defaultVolumeSet(level));
+        return;
+      }
+      case "language": {
+        const value = interaction.options.getString("locale", true);
+        // "default" clears the guild setting, so DEFAULT_LOCALE applies again.
+        const language = value === "default" ? null : isLocale(value) ? value : undefined;
+        if (language === undefined) {
+          await replyError(interaction, t.errors.unknownCommand);
+          return;
+        }
+        await client.settings.update(guildId, { language });
+        const defaultLocale = client.config.defaultLocale;
+        // Confirm in the new effective language.
+        const next = getMessages(resolveLocale(language, defaultLocale));
+        await replyInfo(
+          interaction,
+          language
+            ? next.settings.languageSet(LOCALE_NAMES[language])
+            : next.settings.languageReset(LOCALE_NAMES[defaultLocale]),
+        );
+        // An active Now-Playing message re-renders in the new language.
+        refreshNowPlaying(client.music, guildId);
         return;
       }
       default:

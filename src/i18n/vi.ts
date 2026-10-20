@@ -1,5 +1,10 @@
-/** All user-facing strings (Vietnamese). Later features append new groups here. */
-export const vi = {
+import type { Messages } from "./en.js";
+
+/**
+ * Vietnamese catalog (second locale). Typed against `Messages` from the English source-of-truth catalog (en.ts),
+ * so keys and function signatures must match exactly. Consumers get it through getMessages() / ctx.t only.
+ */
+export const vi: Messages = {
   commands: {
     ping: { description: "Kiểm tra độ trễ của bot" },
     help: { description: "Xem danh sách lệnh của bot" },
@@ -92,6 +97,11 @@ export const vi = {
       defaultVolume: {
         description: "Đặt âm lượng mặc định cho phiên phát mới",
         level: "Mức âm lượng từ 0 đến 150",
+      },
+      language: {
+        description: "Đổi ngôn ngữ của bot trong máy chủ này",
+        locale: "Ngôn ngữ muốn dùng",
+        default: "Mặc định của bot",
       },
     },
   },
@@ -275,6 +285,7 @@ export const vi = {
     twentyFourSeven: "Chế độ 24/7",
     autoplay: "Tự động phát",
     autoplayMode: "Chế độ tự động phát",
+    language: "Ngôn ngữ",
     notSet: "Chưa đặt",
     on: "Bật",
     off: "Tắt",
@@ -285,6 +296,10 @@ export const vi = {
       "Không thể dùng @everyone hoặc vai trò của bot làm vai trò DJ.",
     defaultVolumeSet: (level: number) =>
       `✅ Âm lượng mặc định: **${level}%** (áp dụng cho phiên phát mới).`,
+    languageDefault: (name: string) => `Mặc định (${name})`,
+    languageSet: (name: string) => `✅ Đã đổi ngôn ngữ sang **${name}**.`,
+    languageReset: (name: string) =>
+      `✅ Đã dùng lại ngôn ngữ mặc định của bot (**${name}**).`,
     noPermission: "Bạn cần quyền Quản lý máy chủ để dùng lệnh này.",
   },
   filters: {
@@ -316,6 +331,4 @@ export const vi = {
   presence: {
     activity: "Đang phát nhạc | /help",
   },
-} as const;
-
-export type Messages = typeof vi;
+};

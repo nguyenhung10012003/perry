@@ -1,7 +1,8 @@
 import { DiscordAPIError, MessageFlags } from 'discord.js';
 import type { ButtonInteraction } from 'discord.js';
 import type { BotClient } from '../client/bot-client.js';
-import { t } from '../i18n/index.js';
+import { getMessages } from '../i18n/index.js';
+import type { Messages } from '../i18n/index.js';
 import * as controls from '../music/controls.js';
 import { runGuards } from '../music/guards.js';
 import { NP_PREFIX } from '../music/now-playing.js';
@@ -47,8 +48,10 @@ async function followUpError(interaction: ButtonInteraction<'cached'>, message: 
 export async function handleButton(client: BotClient, interaction: ButtonInteraction<'cached'>): Promise<void> {
   if (!interaction.customId.startsWith(NP_PREFIX)) return;
   const action = interaction.customId.slice(NP_PREFIX.length);
+  let t: Messages | undefined;
   try {
     if (!isAction(action)) return;
+    t = await client.messagesFor(interaction.guildId);
     if (client.shuttingDown) {
       await replyError(interaction, t.errors.shuttingDown);
       return;
@@ -73,14 +76,15 @@ export async function handleButton(client: BotClient, interaction: ButtonInterac
       return;
     }
 
-    const guard = await runGuards({ interaction, client, requirements: ACTION_REQUIREMENTS[action] });
+    const guard = await runGuards({ interaction, client, requirements: ACTION_REQUIREMENTS[action], t });
     if (!guard.ok) {
       await replyError(interaction, guard.message);
       return;
     }
 
     if (action === 'queue') {
-      await paginate(interaction, (page) => buildQueuePage(player, page), { ephemeral: true });
+      const messages = t;
+      await paginate(interaction, (page) => buildQueuePage(player, page, messages), messages, { ephemeral: true });
       return;
     }
 
@@ -104,10 +108,11 @@ export async function handleButton(client: BotClient, interaction: ButtonInterac
         result = await controls.shuffle(service, player);
         break;
     }
-    if (!result.ok) await followUpError(interaction, controls.controlError(result));
+    if (!result.ok) await followUpError(interaction, controls.controlError(result, t));
   } catch (err) {
     if (err instanceof DiscordAPIError && typeof err.code === 'number' && IGNORED_DISCORD_CODES.has(err.code)) return;
-    const message = err instanceof UserError ? err.message : t.errors.generic;
+    const messages = t ?? getMessages(client.config.defaultLocale);
+    const message = err instanceof UserError ? err.localized(messages) : messages.errors.generic;
     if (!(err instanceof UserError)) {
       client.logger.error({ err: safeError(err), action }, 'Button handler failed');
     }

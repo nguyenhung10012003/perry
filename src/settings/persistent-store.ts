@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { MAX_VOLUME, SETTINGS_CACHE_TTL_SECONDS, SETTINGS_L1_TTL_MS } from '../config/constants.js';
+import { LOCALES } from '../i18n/locales.js';
 import type { BackendHealth } from '../storage/health.js';
 import type { Keys } from '../storage/keys.js';
 import type { Database } from '../storage/postgres/client.js';
@@ -18,6 +19,8 @@ const cachedSettingsSchema = z.object({
   autoplayMode: z.enum(['related', 'seed']),
   defaultTextChannelId: z.string().nullable(),
   defaultVoiceChannelId: z.string().nullable(),
+  // Tolerated when absent: v1.2 entries have no language (and their DB row is still null), so no key version bump.
+  language: z.enum(LOCALES).nullable().default(null),
 });
 
 export interface PersistentSettingsDeps {

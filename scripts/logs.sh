@@ -10,14 +10,14 @@ SERVICES=()
 
 usage() {
   cat <<'EOF'
-Cách dùng: ./scripts/logs.sh [SERVICE...] [--tail N]
+Usage: ./scripts/logs.sh [SERVICE...] [--tail N]
 
-Theo dõi log (docker compose logs -f). Service: bot, lavalink, postgres, redis, lavalink-init.
-Không chỉ định dịch vụ thì xem tất cả. Nhấn Ctrl+C để thoát.
+Follows the logs (docker compose logs -f). Services: bot, lavalink, postgres, redis, lavalink-init.
+Without a service, all services are shown. Press Ctrl+C to exit.
 
-Tùy chọn:
-  --tail N     số dòng cuối hiện lúc bắt đầu (mặc định: 200)
-  -h, --help   hiện trợ giúp này
+Options:
+  --tail N     number of recent lines shown at start (default: 200)
+  -h, --help   show this help
 EOF
 }
 
@@ -25,7 +25,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --tail)
       if [ $# -lt 2 ]; then
-        err "--tail cần một số dòng."
+        err "--tail requires a number of lines."
         exit 2
       fi
       TAIL="$2"
@@ -36,7 +36,7 @@ while [ $# -gt 0 ]; do
       exit 0
       ;;
     -*)
-      err "Tham số không hợp lệ: $1"
+      err "Invalid argument: $1"
       usage >&2
       exit 2
       ;;
@@ -46,7 +46,7 @@ while [ $# -gt 0 ]; do
 done
 
 if ! matches '^[0-9]{1,6}$' "$TAIL"; then
-  err "--tail phải là số nguyên không âm."
+  err "--tail must be a non-negative integer."
   exit 2
 fi
 

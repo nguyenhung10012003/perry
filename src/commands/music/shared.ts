@@ -5,7 +5,7 @@ import type {
 } from "discord.js";
 import type { Player, Track, UnresolvedTrack } from "lavalink-client";
 import type { BotClient } from "../../client/bot-client.js";
-import { t } from "../../i18n/index.js";
+import type { Messages } from "../../i18n/index.js";
 import { controlError } from "../../music/controls.js";
 import type { ControlFailure } from "../../music/controls.js";
 import { safeTitle } from "../../music/format.js";
@@ -23,7 +23,7 @@ type CommandInteraction = ChatInputCommandInteraction<"cached">;
 /** The guild's player. Guards already ran, so a missing player only happens on a race (player destroyed). */
 export function requirePlayer(client: BotClient, guildId: string): Player {
   const player = client.music.getPlayer(guildId);
-  if (!player) throw new UserError(t.errors.noPlayer);
+  if (!player) throw new UserError((t) => t.errors.noPlayer);
   return player;
 }
 
@@ -39,8 +39,9 @@ export function announce(
 export function failControl(
   interaction: CommandInteraction,
   failure: ControlFailure,
+  t: Messages,
 ): Promise<void> {
-  return replyError(interaction, controlError(failure));
+  return replyError(interaction, controlError(failure, t));
 }
 
 /** Markdown-safe title of a track (or a dash when unknown). */
@@ -51,6 +52,7 @@ export function titleOf(track: Track | UnresolvedTrack | null | undefined): stri
 /** Error message for every non-ok load outcome (shared by /play and /radio). */
 export function loadErrorMessage(
   outcome: Exclude<LoadOutcome, { kind: "ok" }>,
+  t: Messages,
 ): string {
   switch (outcome.kind) {
     case "empty":

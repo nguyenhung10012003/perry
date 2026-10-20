@@ -1,5 +1,4 @@
 import type { BotClient } from '../../client/bot-client.js';
-import { t } from '../../i18n/index.js';
 import type { Command } from '../../types/command.js';
 import { baseEmbed } from '../../utils/embeds.js';
 import { createCommand } from '../builder.js';
@@ -27,10 +26,10 @@ async function measureLavalinkLatency(client: BotClient): Promise<number | null>
 }
 
 export const ping: Command = {
-  data: createCommand('ping', t.commands.ping.description),
+  data: createCommand('ping', (m) => m.commands.ping.description),
   category: 'general',
   cooldownSeconds: 3,
-  async execute({ interaction, client }) {
+  async execute({ interaction, client, t }) {
     const apiLatency = Math.max(0, Date.now() - interaction.createdTimestamp);
     const wsPing = client.ws.ping;
     const lines = [t.ping.api(apiLatency), wsPing >= 0 ? t.ping.ws(wsPing) : t.ping.wsUnknown];

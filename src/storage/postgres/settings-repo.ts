@@ -1,4 +1,5 @@
 import { eq, sql } from 'drizzle-orm';
+import { isLocale } from '../../i18n/locales.js';
 import type { GuildSettings } from '../../settings/guild-settings.js';
 import { AUTOPLAY_MODES, defaultSettings } from '../../settings/guild-settings.js';
 import type { Database } from './client.js';
@@ -17,6 +18,7 @@ function toSettings(row: Row): GuildSettings {
     autoplayMode: mode ?? defaultSettings().autoplayMode,
     defaultTextChannelId: row.defaultTextChannelId,
     defaultVoiceChannelId: row.defaultVoiceChannelId,
+    language: isLocale(row.language) ? row.language : null,
   };
 }
 
@@ -30,6 +32,7 @@ function toColumns(patch: Partial<GuildSettings>): Columns {
   if (patch.autoplayMode !== undefined) columns.autoplayMode = patch.autoplayMode;
   if (patch.defaultTextChannelId !== undefined) columns.defaultTextChannelId = patch.defaultTextChannelId;
   if (patch.defaultVoiceChannelId !== undefined) columns.defaultVoiceChannelId = patch.defaultVoiceChannelId;
+  if (patch.language !== undefined) columns.language = patch.language;
   return columns;
 }
 

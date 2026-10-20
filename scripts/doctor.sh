@@ -7,13 +7,13 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Cách dùng: ./scripts/doctor.sh
+Usage: ./scripts/doctor.sh
 
-Kiểm tra (chỉ đọc) Docker, tệp .env (chỉ in TÊN biến, không in giá trị), trạng thái các
-container, Lavalink + plugin, PostgreSQL + migration, Redis, bot và cổng đã publish.
-Chạy được cả khi stack đang dừng. In bảng PASS / FAIL / WARN / SKIP.
+Checks (read-only) Docker, the .env file (prints variable NAMES only, never values), the state
+of the containers, Lavalink + plugins, PostgreSQL + migrations, Redis, the bot and published ports.
+Works even when the stack is stopped. Prints a PASS / FAIL / WARN / SKIP table.
 
-Mã thoát: 0 không có lỗi nặng (có thể còn cảnh báo), 1 có ít nhất một lỗi.
+Exit codes: 0 no serious errors (warnings may remain), 1 at least one error.
 EOF
 }
 
@@ -24,7 +24,7 @@ case "${1:-}" in
     exit 0
     ;;
   *)
-    err "Tham số không hợp lệ: $1"
+    err "Invalid argument: $1"
     usage >&2
     exit 2
     ;;
@@ -58,23 +58,23 @@ row() {
 }
 
 printf 'Perry doctor - %s\n\n' "$(date '+%Y-%m-%d %H:%M:%S')"
-printf '%-6s %-20s %s\n' 'STATUS' 'CHECK' 'CHI TIẾT'
+printf '%-6s %-20s %s\n' 'STATUS' 'CHECK' 'DETAIL'
 
 # --- Docker -----------------------------------------------------------------
 DOCKER_OK=0
 if ! command -v docker >/dev/null 2>&1; then
-  row FAIL "docker" "chưa cài Docker (https://docs.docker.com/engine/install/)"
+  row FAIL "docker" "Docker is not installed (https://docs.docker.com/engine/install/)"
 elif ! docker info >/dev/null 2>&1; then
-  row FAIL "docker" "daemon không phản hồi (bật Docker, kiểm tra quyền của user)"
+  row FAIL "docker" "the daemon is not responding (start Docker, check the user's permissions)"
 else
   dver="$(docker version --format '{{.Server.Version}}' 2>/dev/null || true)"
   row PASS "docker" "Engine ${dver:-?}"
   cver="$(docker compose version --short 2>/dev/null || true)"
   cver="${cver#v}"
   if [ -z "$cver" ]; then
-    row FAIL "docker compose" "chưa có Compose v2 (https://docs.docker.com/compose/install/)"
+    row FAIL "docker compose" "Compose v2 is not available (https://docs.docker.com/compose/install/)"
   elif [ "${cver%%.*}" -lt 2 ] 2>/dev/null; then
-    row FAIL "docker compose" "phiên bản $cver quá cũ, cần v2 trở lên"
+    row FAIL "docker compose" "version $cver is too old, v2 or newer is required"
   else
     row PASS "docker compose" "v$cver"
     DOCKER_OK=1
@@ -84,18 +84,18 @@ fi
 # --- .env -------------------------------------------------------------------
 ENV_FILE="$(env_file_path)"
 if [ ! -f "$ENV_FILE" ]; then
-  row FAIL "env file" "chưa có $ENV_FILE (chạy ./scripts/setup.sh)"
+  row FAIL "env file" "$ENV_FILE does not exist (run ./scripts/setup.sh)"
 else
   mode="$(file_mode "$ENV_FILE" || true)"
   case "$mode" in
     600 | 400) row PASS "env permissions" "$mode" ;;
-    *) row WARN "env permissions" "đang là ${mode:-?}, nên là 600 (chmod 600 $ENV_FILE)" ;;
+    *) row WARN "env permissions" "currently ${mode:-?}, should be 600 (chmod 600 $ENV_FILE)" ;;
   esac
   missing="$(missing_env_names)"
   if [ -z "$missing" ]; then
-    row PASS "env required" "đủ: $REQUIRED_ENV_NAMES"
+    row PASS "env required" "all set: $REQUIRED_ENV_NAMES"
   else
-    row FAIL "env required" "thiếu hoặc trống: $missing"
+    row FAIL "env required" "missing or empty: $missing"
   fi
   badpw=""
   for name in LAVALINK_PASSWORD POSTGRES_PASSWORD REDIS_PASSWORD; do
@@ -105,16 +105,16 @@ else
     fi
   done
   if [ -z "$badpw" ]; then
-    row PASS "password chars" "chỉ gồm [A-Za-z0-9_-]"
+    row PASS "password chars" "only [A-Za-z0-9_-]"
   else
-    row FAIL "password chars" "có ký tự ngoài [A-Za-z0-9_-] (làm hỏng DATABASE_URL / REDIS_URL):$badpw"
+    row FAIL "password chars" "contains characters outside [A-Za-z0-9_-] (breaks DATABASE_URL / REDIS_URL):$badpw"
   fi
   value="$(env_get DISCORD_TOKEN)"
   if [ -n "$value" ]; then
     if matches '^[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{20,}$' "$value"; then
-      row PASS "token shape" "đúng dạng (không kiểm tra được token còn hiệu lực)"
+      row PASS "token shape" "looks valid (whether the token still works cannot be checked)"
     else
-      row WARN "token shape" "không giống token bot (3 phần cách nhau bởi dấu chấm); kiểm tra lại"
+      row WARN "token shape" "does not look like a bot token (3 parts separated by dots); check it"
     fi
   fi
   value=""
@@ -122,9 +122,9 @@ fi
 
 # --- Containers -------------------------------------------------------------
 if [ "$DOCKER_OK" = "0" ]; then
-  row SKIP "container" "bỏ qua vì Docker không dùng được"
+  row SKIP "container" "skipped because Docker is not usable"
   printf '\n'
-  err "Có $FAILS lỗi. Sửa Docker rồi chạy lại ./scripts/doctor.sh."
+  err "$FAILS error(s). Fix Docker and run ./scripts/doctor.sh again."
   exit 1
 fi
 
@@ -134,22 +134,22 @@ service_row() {
   STATE="$(service_state "$service")"
   restarts="$(service_restarts "$service")"
   case "$STATE" in
-    healthy | running) row PASS "$label" "$(state_label "$STATE") (khởi động lại: $restarts lần)" ;;
-    starting) row WARN "$label" "đang khởi động (khởi động lại: $restarts lần)" ;;
-    absent) row FAIL "$label" "chưa chạy (./scripts/deploy.sh)" ;;
-    *) row FAIL "$label" "$(state_label "$STATE") (khởi động lại: $restarts lần)" ;;
+    healthy | running) row PASS "$label" "$(state_label "$STATE") (restarts: $restarts)" ;;
+    starting) row WARN "$label" "starting (restarts: $restarts)" ;;
+    absent) row FAIL "$label" "not running (./scripts/deploy.sh)" ;;
+    *) row FAIL "$label" "$(state_label "$STATE") (restarts: $restarts)" ;;
   esac
 }
 
 init_state="$(service_state lavalink-init)"
 if [ "$init_state" = "absent" ]; then
-  row FAIL "lavalink-init" "chưa chạy (./scripts/deploy.sh)"
+  row FAIL "lavalink-init" "not running (./scripts/deploy.sh)"
 else
   init_code="$(service_exit_code lavalink-init || true)"
   if [ "$init_state" = "exited" ] && [ "${init_code:-1}" = "0" ]; then
-    row PASS "lavalink-init" "đã chạy xong (exit 0), quyền thư mục plugin đã đúng"
+    row PASS "lavalink-init" "completed (exit 0), plugin directory permissions are correct"
   else
-    row FAIL "lavalink-init" "trạng thái $(state_label "$init_state"), exit ${init_code:-?} (xem: ./scripts/logs.sh lavalink-init)"
+    row FAIL "lavalink-init" "state $(state_label "$init_state"), exit ${init_code:-?} (see: ./scripts/logs.sh lavalink-init)"
   fi
 fi
 service_row "container postgres" postgres
@@ -169,9 +169,9 @@ if is_up "$LL_STATE"; then
   # shellcheck disable=SC2016  # expanded by sh inside the container on purpose
   info_json="$(svc_exec lavalink sh -c 'curl -fsS --max-time 5 -H "Authorization: $LAVALINK_SERVER_PASSWORD" http://localhost:2333/v4/info' 2>/dev/null || true)"
   if [ -z "$info_json" ]; then
-    row FAIL "lavalink api" "/v4/info không trả lời (sai mật khẩu hoặc Lavalink chưa sẵn sàng)"
+    row FAIL "lavalink api" "/v4/info did not respond (wrong password or Lavalink is not ready yet)"
   else
-    row PASS "lavalink api" "/v4/info trả lời"
+    row PASS "lavalink api" "/v4/info responded"
     missing_plugins=""
     for plugin in youtube-plugin lavasrc-plugin lavalyrics-plugin; do
       case "$info_json" in
@@ -181,30 +181,30 @@ if is_up "$LL_STATE"; then
     done
     info_json=""
     if [ -z "$missing_plugins" ]; then
-      row PASS "lavalink plugins" "youtube, lavasrc, lavalyrics đã nạp"
+      row PASS "lavalink plugins" "youtube, lavasrc, lavalyrics loaded"
     else
-      row FAIL "lavalink plugins" "chưa nạp:$missing_plugins (lần đầu tải mất 30-90 giây; xem log lavalink)"
+      row FAIL "lavalink plugins" "not loaded:$missing_plugins (the first download takes 30-90 seconds; see the lavalink logs)"
     fi
   fi
 else
-  row SKIP "lavalink api" "bỏ qua vì lavalink chưa chạy"
+  row SKIP "lavalink api" "skipped because lavalink is not running"
 fi
 
 # --- Postgres ---------------------------------------------------------------
 if is_up "$PG_STATE"; then
   if svc_exec postgres pg_isready -U perry -d perry >/dev/null 2>&1; then
-    row PASS "postgres ready" "pg_isready: sẵn sàng nhận kết nối"
+    row PASS "postgres ready" "pg_isready: accepting connections"
     count="$(svc_exec postgres psql -U perry -d perry -Atc 'select count(*) from drizzle.__drizzle_migrations' 2>/dev/null || true)"
     if matches '^[0-9]+$' "$count" && [ "$count" -gt 0 ]; then
-      row PASS "postgres migrations" "$count migration đã áp dụng"
+      row PASS "postgres migrations" "$count migration(s) applied"
     else
-      row FAIL "postgres migrations" "chưa có migration nào (bot chưa khởi động thành công?); xem log bot"
+      row FAIL "postgres migrations" "no migrations applied (did the bot fail to start?); see the bot logs"
     fi
   else
-    row FAIL "postgres ready" "pg_isready không sẵn sàng"
+    row FAIL "postgres ready" "pg_isready: not ready"
   fi
 else
-  row SKIP "postgres ready" "bỏ qua vì postgres chưa chạy"
+  row SKIP "postgres ready" "skipped because postgres is not running"
 fi
 
 # --- Redis ------------------------------------------------------------------
@@ -213,10 +213,10 @@ if is_up "$REDIS_STATE"; then
   if [ "$pong" = "PONG" ]; then
     row PASS "redis ping" "PONG"
   else
-    row FAIL "redis ping" "không trả lời PONG"
+    row FAIL "redis ping" "did not answer PONG"
   fi
 else
-  row SKIP "redis ping" "bỏ qua vì redis chưa chạy"
+  row SKIP "redis ping" "skipped because redis is not running"
 fi
 
 # --- Bot --------------------------------------------------------------------
@@ -224,19 +224,19 @@ if [ "$BOT_STATE" != "absent" ]; then
   bot_logs="$(show_logs bot 200)"
   case "$bot_logs" in
     *'Login failed'*)
-      row FAIL "bot login" "log có 'Login failed': token sai hoặc bị reset; sửa DISCORD_TOKEN trong .env rồi ./scripts/deploy.sh"
+      row FAIL "bot login" "logs contain 'Login failed': the token is wrong or was reset; fix DISCORD_TOKEN in .env, then ./scripts/deploy.sh"
       ;;
     *)
       if [ "$BOT_STATE" = "healthy" ]; then
-        row PASS "bot login" "heartbeat mới, bot đã kết nối Discord"
+        row PASS "bot login" "recent heartbeat, the bot is connected to Discord"
       else
-        row WARN "bot login" "chưa thấy heartbeat; nếu kéo dài hãy xem ./scripts/logs.sh bot"
+        row WARN "bot login" "no heartbeat yet; if this persists, see ./scripts/logs.sh bot"
       fi
       ;;
   esac
   bot_logs=""
 else
-  row SKIP "bot login" "bỏ qua vì bot chưa chạy"
+  row SKIP "bot login" "skipped because the bot is not running"
 fi
 
 # --- Published ports --------------------------------------------------------
@@ -251,18 +251,18 @@ for service in bot lavalink postgres redis lavalink-init; do
   fi
 done
 if [ -z "$published" ]; then
-  row PASS "published ports" "không có cổng nào mở ra máy host"
+  row PASS "published ports" "no ports are exposed to the host"
 else
-  row FAIL "published ports" "dịch vụ đang publish cổng ra host:$published (production không nên mở cổng)"
+  row FAIL "published ports" "services publishing ports to the host:$published (production should not expose ports)"
 fi
 
 printf '\n'
 if [ "$FAILS" -gt 0 ]; then
-  err "Có $FAILS lỗi, $WARNS cảnh báo. Xem ./scripts/logs.sh <service> để biết chi tiết."
+  err "$FAILS error(s), $WARNS warning(s). See ./scripts/logs.sh <service> for details."
   exit 1
 fi
 if [ "$WARNS" -gt 0 ]; then
-  warn "Không có lỗi nặng, $WARNS cảnh báo."
+  warn "No serious errors, $WARNS warning(s)."
 else
-  ok "Mọi kiểm tra đều đạt."
+  ok "All checks passed."
 fi

@@ -1,4 +1,3 @@
-import { t } from "../../i18n/index.js";
 import { fetchLyrics } from "../../music/lyrics.js";
 import { truncate } from "../../music/format.js";
 import { REQ } from "../../music/requirements.js";
@@ -12,11 +11,11 @@ import { requirePlayer } from "./shared.js";
 const EMBED_TITLE_MAX = 256;
 
 export const lyrics: Command = {
-  data: createCommand("lyrics", t.commands.lyrics.description),
+  data: createCommand("lyrics", (m) => m.commands.lyrics.description),
   category: "music",
   cooldownSeconds: 10,
   requirements: REQ.nowPlaying,
-  async execute({ interaction, client }) {
+  async execute({ interaction, client, t }) {
     // The lookup goes through Lavalink and external lyrics services, so it can be slow.
     await interaction.deferReply();
     const player = requirePlayer(client, interaction.guildId);
@@ -49,6 +48,6 @@ export const lyrics: Command = {
         .setDescription(pages[page - 1] ?? t.lyrics.notFound)
         .setFooter({ text: t.lyrics.footer(page, pages.length) });
       return { embed, page, totalPages: pages.length };
-    });
+    }, t);
   },
 };

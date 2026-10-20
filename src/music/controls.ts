@@ -5,7 +5,7 @@ import type {
   UnresolvedTrack,
 } from "lavalink-client";
 import { MAX_VOLUME } from "../config/constants.js";
-import { t } from "../i18n/index.js";
+import type { Messages } from "../i18n/index.js";
 import { applyFilterPreset } from "./filters.js";
 import type { FilterName } from "./filters.js";
 import { formatDuration } from "./format.js";
@@ -15,7 +15,8 @@ import type { MusicService } from "./music-service.js";
 /**
  * Shared player actions. Slash commands and Now-Playing buttons both call these functions; they are the only
  * place where the player is mutated for these actions. Each returns a result descriptor and never renders
- * anything: callers pick the message (see `controlError` for failures and the `t.music.*` strings for success).
+ * anything: callers pick the message in the guild's language (see `controlError` for failures and the
+ * `Messages.music.*` strings for success).
  * Guards (voice/DJ) are NOT checked here; run `runGuards` with the matching REQ preset first.
  */
 
@@ -35,8 +36,8 @@ export type ControlResult<T extends object> =
 
 const nothingPlaying: ControlFailure = { ok: false, reason: "nothingPlaying" };
 
-/** Localised message for a failed control. */
-export function controlError(failure: ControlFailure): string {
+/** Localised message for a failed control, from the guild's catalog. */
+export function controlError(failure: ControlFailure, t: Messages): string {
   switch (failure.reason) {
     case "nothingPlaying":
       return t.errors.nothingPlaying;

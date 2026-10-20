@@ -6,7 +6,7 @@ import type {
 } from "discord.js";
 import type { Player, Track, UnresolvedTrack } from "lavalink-client";
 import type { BotClient } from "../client/bot-client.js";
-import { t } from "../i18n/index.js";
+import type { Messages } from "../i18n/index.js";
 import type { Requirements } from "../types/command.js";
 import { countHumans } from "./lifecycle.js";
 import { getRequester } from "./requester.js";
@@ -18,6 +18,8 @@ export interface GuardInput {
     | StringSelectMenuInteraction<"cached">;
   client: BotClient;
   requirements: Requirements;
+  /** Messages of the guild's language, used for every failure message. */
+  t: Messages;
 }
 
 export type GuardResult =
@@ -36,9 +38,9 @@ export function hasRequirements(
 const fail = (message: string): GuardResult => ({ ok: false, message });
 
 const JOIN_PERMISSIONS = [
-  { flag: PermissionFlagsBits.ViewChannel, label: t.permissions.ViewChannel },
-  { flag: PermissionFlagsBits.Connect, label: t.permissions.Connect },
-  { flag: PermissionFlagsBits.Speak, label: t.permissions.Speak },
+  { flag: PermissionFlagsBits.ViewChannel, key: "ViewChannel" },
+  { flag: PermissionFlagsBits.Connect, key: "Connect" },
+  { flag: PermissionFlagsBits.Speak, key: "Speak" },
 ] as const;
 
 /**
@@ -69,7 +71,7 @@ function affectedTrack(
  * voice -> same channel (idleJoin exception) -> bot permissions when joining -> player/playing -> DJ (D13/D21).
  */
 export async function runGuards(input: GuardInput): Promise<GuardResult> {
-  const { interaction, client, requirements: req } = input;
+  const { interaction, client, requirements: req, t } = input;
   if (!hasRequirements(req)) return { ok: true };
   const service = client.music;
   const { guild, member } = interaction;
@@ -97,7 +99,7 @@ export async function runGuards(input: GuardInput): Promise<GuardResult> {
       const permissions = channel.permissionsFor(me);
       const missing = JOIN_PERMISSIONS.filter(
         ({ flag }) => !permissions?.has(flag),
-      ).map(({ label }) => label);
+      ).map(({ key }) => t.permissions[key]);
       if (missing.length > 0)
         return fail(
           t.errors.missingPerms(escapeMarkdown(channel.name), missing),

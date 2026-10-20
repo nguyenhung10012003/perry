@@ -1,5 +1,4 @@
 import { MAX_QUEUE_SIZE } from "../../config/constants.js";
-import { t } from "../../i18n/index.js";
 import { planAdditions } from "../../music/discovery/queue-add.js";
 import { trackLink } from "../../music/format.js";
 import { REQ } from "../../music/requirements.js";
@@ -7,7 +6,7 @@ import { autocompleteSearch, loadTracks } from "../../music/search.js";
 import type { SearchSource } from "../../music/search.js";
 import type { Command } from "../../types/command.js";
 import { replyError } from "../../utils/respond.js";
-import { createCommand } from "../builder.js";
+import { choice, createCommand, describe } from "../builder.js";
 import { announce, loadErrorMessage, respondAutocomplete } from "./shared.js";
 
 const SOURCES = ["youtube", "youtubemusic", "soundcloud"] as const;
@@ -17,33 +16,28 @@ function isSearchSource(value: string | null): value is SearchSource {
 }
 
 export const play: Command = {
-  data: createCommand("play", t.commands.play.description)
+  data: createCommand("play", (m) => m.commands.play.description)
     .addStringOption((option) =>
-      option
-        .setName("query")
-        .setDescription(t.commands.play.query)
+      describe(option.setName("query"), (m) => m.commands.play.query)
         .setRequired(true)
         .setAutocomplete(true)
         .setMaxLength(500),
     )
     .addStringOption((option) =>
-      option
-        .setName("source")
-        .setDescription(t.commands.play.source)
+      describe(option.setName("source"), (m) => m.commands.play.source)
         .addChoices(
-          ...SOURCES.map((source) => ({
-            name: t.commands.play.sources[source],
-            value: source,
-          })),
+          ...SOURCES.map((source) =>
+            choice(source, (m) => m.commands.play.sources[source]),
+          ),
         ),
     )
     .addBooleanOption((option) =>
-      option.setName("next").setDescription(t.commands.play.next),
+      describe(option.setName("next"), (m) => m.commands.play.next),
     ),
   category: "music",
   cooldownSeconds: 3,
   requirements: REQ.play,
-  async execute({ interaction, client }) {
+  async execute({ interaction, client, t }) {
     await interaction.deferReply();
     const music = client.music;
     music.ensureReady();
@@ -58,7 +52,7 @@ export const play: Command = {
       username: interaction.user.username,
     });
     if (outcome.kind !== "ok") {
-      await replyError(interaction, loadErrorMessage(outcome));
+      await replyError(interaction, loadErrorMessage(outcome, t));
       return;
     }
 

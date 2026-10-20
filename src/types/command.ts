@@ -4,6 +4,7 @@ import type {
   RESTPostAPIChatInputApplicationCommandsJSONBody,
 } from 'discord.js';
 import type { BotClient } from '../client/bot-client.js';
+import type { Locale, Messages } from '../i18n/index.js';
 
 export type Category = 'music' | 'general' | 'settings';
 
@@ -31,6 +32,9 @@ export interface CommandData {
 export interface CommandContext {
   interaction: ChatInputCommandInteraction<'cached'>;
   client: BotClient;
+  /** Messages of the guild's effective language (guild setting, otherwise DEFAULT_LOCALE). */
+  t: Messages;
+  locale: Locale;
 }
 
 export interface AutocompleteContext {

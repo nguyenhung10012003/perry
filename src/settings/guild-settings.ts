@@ -1,4 +1,6 @@
 import { DEFAULT_VOLUME, MAX_VOLUME } from '../config/constants.js';
+import { LOCALES, isLocale } from '../i18n/locales.js';
+import type { Locale } from '../i18n/locales.js';
 
 export type AutoplayMode = 'related' | 'seed';
 
@@ -12,6 +14,8 @@ export interface GuildSettings {
   autoplayMode: AutoplayMode;
   defaultTextChannelId: string | null;
   defaultVoiceChannelId: string | null;
+  /** Bot language of the guild; null = DEFAULT_LOCALE. */
+  language: Locale | null;
 }
 
 /**
@@ -33,6 +37,7 @@ export function defaultSettings(): GuildSettings {
     autoplayMode: 'related',
     defaultTextChannelId: null,
     defaultVoiceChannelId: null,
+    language: null,
   };
 }
 
@@ -46,5 +51,8 @@ export function validateSettingsPatch(patch: Partial<GuildSettings>): void {
   }
   if (patch.autoplayMode !== undefined && !AUTOPLAY_MODES.includes(patch.autoplayMode)) {
     throw new RangeError(`autoplayMode must be one of: ${AUTOPLAY_MODES.join(', ')}`);
+  }
+  if (patch.language !== undefined && patch.language !== null && !isLocale(patch.language)) {
+    throw new RangeError(`language must be null or one of: ${LOCALES.join(', ')}`);
   }
 }

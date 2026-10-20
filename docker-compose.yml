@@ -53,18 +53,19 @@ services:
         condition: service_healthy
     # The HEALTHCHECK (heartbeat file) is defined in the image.
     environment:
-      DISCORD_TOKEN: "${DISCORD_TOKEN:?Chưa đặt DISCORD_TOKEN trong .env, hãy chạy ./scripts/setup.sh}"
-      DISCORD_CLIENT_ID: "${DISCORD_CLIENT_ID:?Chưa đặt DISCORD_CLIENT_ID trong .env, hãy chạy ./scripts/setup.sh}"
+      DISCORD_TOKEN: "${DISCORD_TOKEN:?DISCORD_TOKEN is not set in .env, run ./scripts/setup.sh}"
+      DISCORD_CLIENT_ID: "${DISCORD_CLIENT_ID:?DISCORD_CLIENT_ID is not set in .env, run ./scripts/setup.sh}"
       DEV_GUILD_ID: "${DEV_GUILD_ID:-}"
       LAVALINK_HOST: lavalink
       LAVALINK_PORT: "2333"
-      LAVALINK_PASSWORD: "${LAVALINK_PASSWORD:?Chưa đặt LAVALINK_PASSWORD trong .env, hãy chạy ./scripts/setup.sh}"
+      LAVALINK_PASSWORD: "${LAVALINK_PASSWORD:?LAVALINK_PASSWORD is not set in .env, run ./scripts/setup.sh}"
       LAVALINK_SECURE: "false"
       STORAGE_DRIVER: persistent
-      DATABASE_URL: "postgres://perry:${POSTGRES_PASSWORD:?Chưa đặt POSTGRES_PASSWORD trong .env, hãy chạy ./scripts/setup.sh}@postgres:5432/perry"
-      REDIS_URL: "redis://:${REDIS_PASSWORD:?Chưa đặt REDIS_PASSWORD trong .env, hãy chạy ./scripts/setup.sh}@redis:6379"
+      DATABASE_URL: "postgres://perry:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set in .env, run ./scripts/setup.sh}@postgres:5432/perry"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is not set in .env, run ./scripts/setup.sh}@redis:6379"
       LOG_LEVEL: "${LOG_LEVEL:-info}"
       LOG_PRETTY: "${LOG_PRETTY:-false}"
+      DEFAULT_LOCALE: "${DEFAULT_LOCALE:-en}"
       REDIS_KEY_PREFIX: "${REDIS_KEY_PREFIX:-perry}"
       PLAYER_RESTORE: "${PLAYER_RESTORE:-true}"
       PLAY_HISTORY: "${PLAY_HISTORY:-false}"
@@ -109,7 +110,7 @@ services:
         condition: service_completed_successfully
     environment:
       JAVA_TOOL_OPTIONS: "${LAVALINK_JAVA_OPTS:--Xmx1G}"
-      LAVALINK_SERVER_PASSWORD: "${LAVALINK_PASSWORD:?Chưa đặt LAVALINK_PASSWORD trong .env, hãy chạy ./scripts/setup.sh}"
+      LAVALINK_SERVER_PASSWORD: "${LAVALINK_PASSWORD:?LAVALINK_PASSWORD is not set in .env, run ./scripts/setup.sh}"
       LAVASRC_SPOTIFY_ENABLED: "${LAVASRC_SPOTIFY_ENABLED:-false}"
       SPOTIFY_CLIENT_ID: "${SPOTIFY_CLIENT_ID:-}"
       SPOTIFY_CLIENT_SECRET: "${SPOTIFY_CLIENT_SECRET:-}"
@@ -148,7 +149,7 @@ services:
     environment:
       POSTGRES_USER: perry
       POSTGRES_DB: perry
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Chưa đặt POSTGRES_PASSWORD trong .env, hãy chạy ./scripts/setup.sh}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set in .env, run ./scripts/setup.sh}"
     volumes:
       # Postgres 18+ images keep PGDATA under /var/lib/postgresql/<major>/docker, so mount one level up.
       - postgres-data:/var/lib/postgresql
@@ -167,9 +168,9 @@ services:
     stop_grace_period: 30s
     logging: *default-logging
     environment:
-      REDIS_PASSWORD: "${REDIS_PASSWORD:?Chưa đặt REDIS_PASSWORD trong .env, hãy chạy ./scripts/setup.sh}"
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?REDIS_PASSWORD is not set in .env, run ./scripts/setup.sh}"
       # Lets redis-cli authenticate in the healthcheck without a password on the command line.
-      REDISCLI_AUTH: "${REDIS_PASSWORD:?Chưa đặt REDIS_PASSWORD trong .env, hãy chạy ./scripts/setup.sh}"
+      REDISCLI_AUTH: "${REDIS_PASSWORD:?REDIS_PASSWORD is not set in .env, run ./scripts/setup.sh}"
     command:
       - sh
       - -c

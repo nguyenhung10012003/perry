@@ -1,7 +1,7 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } from 'discord.js';
 import type { EmbedBuilder, GuildTextBasedChannel } from 'discord.js';
 import type { Player } from 'lavalink-client';
-import { t } from '../i18n/index.js';
+import type { Messages } from '../i18n/index.js';
 import { safeError } from '../utils/errors.js';
 import { baseEmbed, infoEmbed } from '../utils/embeds.js';
 import type { GuildMusicState, NowPlayingRef } from './guild-state.js';
@@ -50,16 +50,17 @@ function resolveWritableChannel(
   return channel;
 }
 
-/** Posts a short informational notice (best effort, never throws). */
+/** Posts a short informational notice in the guild's language (best effort, never throws). */
 export async function sendNotice(
   service: MusicService,
   channelId: string | null | undefined,
-  text: string,
+  text: (t: Messages) => string,
 ): Promise<void> {
   const channel = resolveWritableChannel(service, channelId);
   if (!channel) return;
   try {
-    await channel.send({ embeds: [infoEmbed(text)], allowedMentions: NO_MENTIONS });
+    const t = await service.client.messagesFor(channel.guild.id);
+    await channel.send({ embeds: [infoEmbed(text(t))], allowedMentions: NO_MENTIONS });
   } catch (err) {
     service.logger.debug({ err: safeError(err) }, 'Could not send notice');
   }
@@ -69,8 +70,8 @@ export async function sendNotice(
 // Rendering
 // ---------------------------------------------------------------------------
 
-/** Builds the Now-Playing embed and button rows for the player's current track, or null when idle. */
-export function buildNowPlaying(player: Player, state?: GuildMusicState): NowPlayingPayload | null {
+/** Builds the Now-Playing embed and button rows (in the given catalog) for the current track, or null when idle. */
+export function buildNowPlaying(player: Player, t: Messages, state?: GuildMusicState): NowPlayingPayload | null {
   const track = player.queue.current;
   if (!track) return null;
   const info = track.info;
@@ -101,10 +102,10 @@ export function buildNowPlaying(player: Player, state?: GuildMusicState): NowPla
   }
   if (info.artworkUrl && /^https?:\/\//i.test(info.artworkUrl)) embed.setThumbnail(info.artworkUrl);
 
-  return { embeds: [embed], components: buildButtons(player), allowedMentions: NO_MENTIONS };
+  return { embeds: [embed], components: buildButtons(player, t), allowedMentions: NO_MENTIONS };
 }
 
-function buildButtons(player: Player): ActionRowBuilder<ButtonBuilder>[] {
+function buildButtons(player: Player, t: Messages): ActionRowBuilder<ButtonBuilder>[] {
   const button = (action: NpAction, label: string, emoji: string, style = ButtonStyle.Secondary): ButtonBuilder =>
     new ButtonBuilder().setCustomId(`${NP_PREFIX}${action}`).setLabel(label).setEmoji(emoji).setStyle(style);
   return [
@@ -152,13 +153,15 @@ export function sendNowPlaying(service: MusicService, player: Player): void {
   const state = service.getState(player.guildId);
   if (!state || state.disposed) return;
   enqueue(service, state, async () => {
+    // Resolved inside the task so the message uses the guild's language at the time it is rendered.
+    const t = await service.client.messagesFor(player.guildId);
     if (state.disposed) return;
     const previous = state.npMessage;
     if (previous) {
       state.npMessage = null;
       await deleteMessage(service, previous);
     }
-    const payload = buildNowPlaying(player, state);
+    const payload = buildNowPlaying(player, t, state);
     if (!payload) return;
     const channel = resolveWritableChannel(service, player.textChannelId, state);
     if (!channel) return;
@@ -180,10 +183,12 @@ export function refreshNowPlaying(service: MusicService, guildId: string): void 
     state.npRefreshQueued = false;
     const wait = MIN_EDIT_INTERVAL_MS - (Date.now() - state.lastNpEdit);
     if (wait > 0) await sleep(wait);
+    // Resolved inside the task, so a /settings language change re-renders in the new language.
+    const t = await service.client.messagesFor(guildId);
     const ref = state.npMessage;
     const player = service.getPlayer(guildId);
     if (!ref || ref.ended || !player || state.disposed) return;
-    const payload = buildNowPlaying(player, state);
+    const payload = buildNowPlaying(player, t, state);
     const channel = service.client.channels.cache.get(ref.channelId);
     if (!payload || !channel?.isTextBased() || channel.isDMBased()) return;
     state.lastNpEdit = Date.now();

@@ -1,7 +1,7 @@
 import type { EmbedBuilder } from 'discord.js';
 import type { Player } from 'lavalink-client';
 import { QUEUE_PAGE_SIZE } from '../config/constants.js';
-import { t } from '../i18n/index.js';
+import type { Messages } from '../i18n/index.js';
 import { baseEmbed } from '../utils/embeds.js';
 import { formatDuration, trackLink } from './format.js';
 import { getRequester } from './requester.js';
@@ -17,8 +17,8 @@ function requesterSuffix(id: string | undefined, botId: string | undefined): str
   return id && id !== botId && /^\d{15,25}$/.test(id) ? ` • <@${id}>` : '';
 }
 
-/** Builds one page of the queue. Always reads the live queue, so re-rendering after changes is safe. */
-export function buildQueuePage(player: Player, requestedPage: number): QueuePage {
+/** Builds one page of the queue in the given catalog. Always reads the live queue, so re-rendering is safe. */
+export function buildQueuePage(player: Player, requestedPage: number, t: Messages): QueuePage {
   const upcoming = player.queue.tracks;
   const totalPages = Math.max(1, Math.ceil(upcoming.length / QUEUE_PAGE_SIZE));
   const page = Math.min(Math.max(1, Math.trunc(requestedPage) || 1), totalPages);

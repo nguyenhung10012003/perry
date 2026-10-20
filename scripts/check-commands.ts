@@ -29,21 +29,41 @@ const warnings: string[] = [];
 const rows: Row[] = [];
 const seen = new Set<string>();
 
+type JsonLocalizations = Partial<Record<string, string | null>> | null;
+
 interface JsonOption {
   name?: string;
   description?: string;
+  description_localizations?: JsonLocalizations;
   options?: JsonOption[];
-  choices?: { name?: string; value?: unknown }[];
+  choices?: { name?: string; name_localizations?: JsonLocalizations; value?: unknown }[];
+}
+
+/** English is the default description; every command, subcommand and option also needs a Vietnamese one. */
+function checkLocalizations(
+  item: { description_localizations?: JsonLocalizations },
+  path: string,
+  problems: string[],
+): void {
+  const vi = item.description_localizations?.vi;
+  if (typeof vi !== 'string' || vi.length === 0) problems.push(`${path}: missing vi description localization`);
+  else if (vi.length > 100) problems.push(`${path}: vi description > 100`);
 }
 
 function checkOption(option: JsonOption, path: string, problems: string[]): void {
   if ((option.name?.length ?? 0) > 32) problems.push(`${path}: name > 32`);
   if ((option.description?.length ?? 0) > 100) problems.push(`${path}: description > 100`);
+  checkLocalizations(option, path, problems);
   const choices = option.choices ?? [];
   if (choices.length > 25) problems.push(`${path}: more than 25 choices`);
   for (const choice of choices) {
     if ((choice.name?.length ?? 0) > 100) problems.push(`${path}: choice name > 100`);
     if (typeof choice.value === 'string' && choice.value.length > 100) problems.push(`${path}: choice value > 100`);
+    for (const [locale, localized] of Object.entries(choice.name_localizations ?? {})) {
+      if (typeof localized === 'string' && localized.length > 100) {
+        problems.push(`${path}: choice ${String(choice.value)} ${locale} name > 100`);
+      }
+    }
   }
   const children = option.options ?? [];
   if (children.length > 25) problems.push(`${path}: more than 25 options`);
@@ -62,6 +82,7 @@ for (const command of commands) {
     optionCount = json.options?.length ?? 0;
     if (!NAME_RE.test(name)) problems.push('invalid name');
     if (description.length === 0 || description.length > 100) problems.push('description must be 1-100 chars');
+    checkLocalizations(json, 'command', problems);
     if (optionCount > 25) problems.push('more than 25 options');
     for (const option of (json.options ?? []) as JsonOption[]) checkOption(option, option.name ?? '?', problems);
     if (JSON.stringify(json).length > 8000) problems.push('command JSON > 8000 chars');

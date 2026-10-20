@@ -1,6 +1,6 @@
 import type { Player, Track, UnresolvedTrack } from 'lavalink-client';
 import { ERROR_BATCH_MS } from '../config/constants.js';
-import { t } from '../i18n/index.js';
+import type { Messages } from '../i18n/index.js';
 import { redact, safeError } from '../utils/errors.js';
 import { recentKeys } from './discovery/filters.js';
 import type { GuildMusicState } from './guild-state.js';
@@ -12,13 +12,16 @@ import { getRequester, isAutoplayTrack, trackProvider } from './requester.js';
 /** Titles listed in one failure notice; the rest is summarised as a count. */
 const MAX_LISTED_FAILURES = 5;
 
-/** Which user notice (if any) a player destroy reason produces. Everything else is silent. */
-function destroyNotice(reason: string | undefined): string | null {
+/**
+ * Which user notice (if any) a player destroy reason produces, as a catalog selector (sendNotice resolves the
+ * guild's language). Everything else is silent.
+ */
+function destroyNotice(reason: string | undefined): ((t: Messages) => string) | null {
   switch (reason) {
     case 'IdleTimeout':
-      return t.music.idleLeft;
+      return (t) => t.music.idleLeft;
     case 'AloneTimeout':
-      return t.music.aloneLeft;
+      return (t) => t.music.aloneLeft;
     case 'NodeReconnectFail':
     case 'NodeDestroy':
     case 'NodeDeleted':
@@ -26,10 +29,10 @@ function destroyNotice(reason: string | undefined): string | null {
     case 'ReconnectAllNodes':
     case 'PlayerChangeNodeFail':
     case 'PlayerChangeNodeFailNoEligibleNode':
-      return t.music.nodeLost;
+      return (t) => t.music.nodeLost;
     case 'TrackErrorMaxTracksErroredPerTime':
     case 'TrackStuckMaxTracksErroredPerTime':
-      return t.music.tooManyErrors;
+      return (t) => t.music.tooManyErrors;
     default:
       // UserLeave, UserStop, Shutdown, Disconnected (kicked/moved out), ChannelDeleted, ...: no message.
       return null;
@@ -73,7 +76,9 @@ function recordFailure(
     state.errorBatch = [];
     if (state.disposed || titles.length === 0) return;
     const listed = titles.slice(0, MAX_LISTED_FAILURES);
-    service.track(sendNotice(service, player.textChannelId, t.music.trackFailed(listed, titles.length - listed.length)));
+    service.track(
+      sendNotice(service, player.textChannelId, (t) => t.music.trackFailed(listed, titles.length - listed.length)),
+    );
   }, ERROR_BATCH_MS);
   state.errorTimer.unref();
 }

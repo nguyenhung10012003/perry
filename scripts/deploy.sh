@@ -11,18 +11,18 @@ TIMEOUT="$DEFAULT_WAIT_TIMEOUT"
 
 usage() {
   cat <<'EOF'
-Cách dùng: ./scripts/deploy.sh [tùy chọn]
+Usage: ./scripts/deploy.sh [options]
 
-Build image bot từ mã nguồn (hoặc pull BOT_IMAGE nếu đã đặt trong .env), chạy
-docker compose up -d và chờ postgres, redis, lavalink, bot khỏe.
+Builds the bot image from source (or pulls BOT_IMAGE when it is set in .env), runs
+docker compose up -d and waits until postgres, redis, lavalink and bot are healthy.
 
-Tùy chọn:
-  --build-only    chỉ build / pull image, không chạy stack
-  --no-build      bỏ qua build / pull, dùng image có sẵn
-  --timeout SEC   thời gian chờ tối đa (mặc định: 300 giây)
-  -h, --help      hiện trợ giúp này
+Options:
+  --build-only    only build / pull the image, do not start the stack
+  --no-build      skip build / pull, use the existing image
+  --timeout SEC   maximum wait time (default: 300 seconds)
+  -h, --help      show this help
 
-Mã thoát: 0 thành công, 1 thất bại (kèm 30 dòng log cuối của dịch vụ lỗi), 2 sai tham số.
+Exit codes: 0 success, 1 failure (with the last 30 log lines of the failing service), 2 invalid arguments.
 EOF
 }
 
@@ -32,7 +32,7 @@ while [ $# -gt 0 ]; do
     --no-build) NO_BUILD=1 ;;
     --timeout)
       if [ $# -lt 2 ]; then
-        err "--timeout cần một số giây."
+        err "--timeout requires a number of seconds."
         exit 2
       fi
       TIMEOUT="$2"
@@ -43,7 +43,7 @@ while [ $# -gt 0 ]; do
       exit 0
       ;;
     *)
-      err "Tham số không hợp lệ: $1"
+      err "Invalid argument: $1"
       usage >&2
       exit 2
       ;;
@@ -52,11 +52,11 @@ while [ $# -gt 0 ]; do
 done
 
 if ! matches '^[1-9][0-9]{0,5}$' "$TIMEOUT"; then
-  err "--timeout phải là số nguyên dương (giây)."
+  err "--timeout must be a positive integer (seconds)."
   exit 2
 fi
 if [ "$BUILD_ONLY" = "1" ] && [ "$NO_BUILD" = "1" ]; then
-  err "--build-only và --no-build không dùng cùng nhau."
+  err "--build-only and --no-build cannot be used together."
   exit 2
 fi
 
@@ -65,31 +65,31 @@ require_env_file
 
 if [ "$NO_BUILD" = "0" ]; then
   if ! build_or_pull; then
-    die "Build / pull image thất bại. Xem lỗi phía trên."
+    die "Image build / pull failed. See the errors above."
   fi
-  ok "Image bot đã sẵn sàng."
+  ok "The bot image is ready."
 else
   export_build_metadata
-  info "Bỏ qua build / pull (--no-build)."
+  info "Skipping build / pull (--no-build)."
 fi
 
 if [ "$BUILD_ONLY" = "1" ]; then
-  ok "Xong (--build-only): chưa chạy stack. Chạy ./scripts/deploy.sh để khởi động."
+  ok "Done (--build-only): the stack was not started. Run ./scripts/deploy.sh to start it."
   exit 0
 fi
 
-info "Khởi động stack (docker compose up -d)..."
+info "Starting the stack (docker compose up -d)..."
 if ! compose up -d --remove-orphans; then
-  die "docker compose up -d thất bại. Xem lỗi phía trên."
+  die "docker compose up -d failed. See the errors above."
 fi
 
 rc=0
 wait_stack_ready "$TIMEOUT" || rc=$?
 if [ "$rc" -ne 0 ]; then
-  err "Triển khai chưa thành công."
-  err "Gợi ý: ./scripts/doctor.sh để chẩn đoán, ./scripts/logs.sh $WAIT_FAILED_SERVICE để xem log đầy đủ."
+  err "Deployment did not succeed."
+  err "Hint: ./scripts/doctor.sh to diagnose, ./scripts/logs.sh $WAIT_FAILED_SERVICE for the full logs."
   if [ "$WAIT_FAILED_SERVICE" = "bot" ]; then
-    err "Nếu log có 'Login failed' thì DISCORD_TOKEN sai hoặc đã bị reset; sửa trong .env rồi chạy lại ./scripts/deploy.sh."
+    err "If the logs show 'Login failed', DISCORD_TOKEN is wrong or has been reset; fix it in .env and run ./scripts/deploy.sh again."
   fi
   exit 1
 fi
@@ -97,12 +97,12 @@ fi
 printf '\n'
 compose ps
 printf '\n'
-ok "Perry đang chạy."
+ok "Perry is running."
 cat <<'EOF'
 
-Bước tiếp theo:
-  - Mời bot vào máy chủ bằng liên kết in ra ở cuối ./scripts/setup.sh (hoặc xem README)
-  - ./scripts/logs.sh      xem log
-  - ./scripts/doctor.sh    kiểm tra tình trạng
-  - ./scripts/update.sh    cập nhật lên phiên bản mới (tự sao lưu trước)
+Next steps:
+  - Invite the bot to a server with the link printed at the end of ./scripts/setup.sh (or see the README)
+  - ./scripts/logs.sh      view the logs
+  - ./scripts/doctor.sh    check the health of the stack
+  - ./scripts/update.sh    update to a new version (backs up first)
 EOF

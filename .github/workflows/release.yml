@@ -1,5 +1,5 @@
-# Release: khi đẩy tag `v*`, build image đa kiến trúc và đẩy lên GHCR bằng GITHUB_TOKEN.
-# Workflow này chỉ được viết, chưa từng chạy trên GitHub.
+# Release: when a `v*` tag is pushed, builds a multi-arch image and pushes it to GHCR with GITHUB_TOKEN.
+# This workflow has only been written; it has never run on GitHub.
 name: Release
 
 on:

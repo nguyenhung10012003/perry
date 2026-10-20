@@ -11,7 +11,6 @@ import {
   SIMILAR_MAX_TRACKS,
 } from "../../config/constants.js";
 import type { Track } from "lavalink-client";
-import { t } from "../../i18n/index.js";
 import { planAdditions } from "../../music/discovery/queue-add.js";
 import type { DiscoveryContext } from "../../music/discovery/types.js";
 import { formatDuration, trackLink, truncate } from "../../music/format.js";
@@ -43,11 +42,11 @@ interface Suggestion {
 }
 
 export const similar: Command = {
-  data: createCommand("similar", t.commands.similar.description),
+  data: createCommand("similar", (m) => m.commands.similar.description),
   category: "music",
   cooldownSeconds: 10,
   requirements: REQ.similar,
-  async execute({ interaction, client }) {
+  async execute({ interaction, client, t }) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const music = client.music;
     music.ensureReady();
@@ -58,7 +57,7 @@ export const similar: Command = {
       return;
     }
     if (!(await music.autoplay.allowDiscovery(guildId))) {
-      throw new UserError(t.errors.discoveryRateLimited);
+      throw new UserError((m) => m.errors.discoveryRateLimited);
     }
 
     const ctx: DiscoveryContext = {
@@ -176,6 +175,7 @@ export const similar: Command = {
             interaction: component,
             client,
             requirements: REQ.play,
+            t,
           });
           if (!guard.ok) {
             await fail(guard.message);
@@ -237,7 +237,7 @@ export const similar: Command = {
           await component
             .followUp({
               embeds: [
-                errorEmbed(err instanceof UserError ? err.message : t.errors.generic),
+                errorEmbed(err instanceof UserError ? err.localized(t) : t.errors.generic),
               ],
               flags: MessageFlags.Ephemeral,
               allowedMentions: NO_MENTIONS,

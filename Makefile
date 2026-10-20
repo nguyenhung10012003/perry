@@ -1,5 +1,5 @@
-# Perry: các lệnh tắt. Mỗi target chỉ gọi script trong scripts/ hoặc docker compose.
-# Chạy `make` (hoặc `make help`) để xem danh sách.
+# Perry: shortcut commands. Every target only calls a script in scripts/ or docker compose.
+# Run `make` (or `make help`) to see the list.
 
 SERVICE ?=
 FILE ?=
@@ -7,44 +7,44 @@ FILE ?=
 .DEFAULT_GOAL := help
 .PHONY: help setup up down restart logs ps update backup restore dev-infra dev-infra-down doctor build
 
-help: ## Hiện danh sách lệnh
+help: ## Show the list of commands
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  make %-15s %s\n", $$1, $$2}'
 
-setup: ## Tạo .env (hỏi token, tự sinh mật khẩu)
+setup: ## Create .env (asks for the token, generates passwords)
 	./scripts/setup.sh
 
-up: ## Build và chạy toàn bộ stack, chờ đến khi khỏe
+up: ## Build and start the whole stack, wait until healthy
 	./scripts/deploy.sh
 
-down: ## Dừng stack (giữ nguyên dữ liệu)
+down: ## Stop the stack (data is kept)
 	docker compose down
 
-restart: ## Khởi động lại các service
+restart: ## Restart the services
 	docker compose restart
 
-logs: ## Xem log (make logs SERVICE=bot)
+logs: ## Show logs (make logs SERVICE=bot)
 	./scripts/logs.sh $(SERVICE)
 
-ps: ## Trạng thái các container
+ps: ## Container status
 	docker compose ps
 
-update: ## Cập nhật phiên bản mới (tự sao lưu trước)
+update: ## Update to a new version (backs up first)
 	./scripts/update.sh
 
-backup: ## Sao lưu PostgreSQL vào backups/
+backup: ## Back up PostgreSQL to backups/
 	./scripts/backup.sh
 
-restore: ## Khôi phục (make restore FILE=backups/perry-....dump)
-	@test -n "$(FILE)" || { echo "Cách dùng: make restore FILE=backups/perry-YYYYmmdd-HHMMSS.dump" >&2; exit 1; }; ./scripts/restore.sh "$(FILE)"
+restore: ## Restore (make restore FILE=backups/perry-....dump)
+	@test -n "$(FILE)" || { echo "Usage: make restore FILE=backups/perry-YYYYmmdd-HHMMSS.dump" >&2; exit 1; }; ./scripts/restore.sh "$(FILE)"
 
-dev-infra: ## Chạy Lavalink + Postgres + Redis cho npm run dev (chỉ 127.0.0.1)
+dev-infra: ## Start Lavalink + Postgres + Redis for npm run dev (127.0.0.1 only)
 	docker compose -f docker-compose.dev.yml --profile storage up -d
 
-dev-infra-down: ## Dừng hạ tầng dev
+dev-infra-down: ## Stop the dev infrastructure
 	docker compose -f docker-compose.dev.yml --profile storage down
 
-doctor: ## Chẩn đoán tình trạng triển khai
+doctor: ## Diagnose the deployment
 	./scripts/doctor.sh
 
-build: ## Chỉ build image bot
+build: ## Only build the bot image
 	./scripts/deploy.sh --build-only

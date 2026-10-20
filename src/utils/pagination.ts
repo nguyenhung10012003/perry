@@ -1,6 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, MessageFlags } from 'discord.js';
 import type { ButtonInteraction, ChatInputCommandInteraction, EmbedBuilder } from 'discord.js';
-import { t } from '../i18n/index.js';
+import type { Messages } from '../i18n/index.js';
 
 export const PAGINATION_PREFIX = 'pg:';
 const IDLE_MS = 120_000;
@@ -21,7 +21,7 @@ export interface PaginateOptions {
   ephemeral?: boolean;
 }
 
-function buildRow(page: number, totalPages: number, disabled: boolean): ActionRowBuilder<ButtonBuilder> {
+function buildRow(page: number, totalPages: number, disabled: boolean, t: Messages): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(`${PAGINATION_PREFIX}prev`)
@@ -46,18 +46,20 @@ function buildRow(page: number, totalPages: number, disabled: boolean): ActionRo
 /**
  * Sends a paged embed. `render(page)` is called again on every click, so content is always live.
  * Only the user who ran the command can flip pages (120 s idle timeout, then the buttons are disabled).
- * Works for a fresh reply, a deferred reply (editReply) and button interactions.
+ * Works for a fresh reply, a deferred reply (editReply) and button interactions. `t` (the guild's catalog)
+ * labels the buttons and the owner-only notice.
  */
 export async function paginate(
   interaction: ChatInputCommandInteraction<'cached'> | ButtonInteraction<'cached'>,
   render: (page: number) => PageContent,
+  t: Messages,
   options: PaginateOptions = {},
 ): Promise<void> {
   const first = render(options.startPage ?? 1);
   const paged = first.totalPages > 1;
   const payload = {
     embeds: [first.embed],
-    components: paged ? [buildRow(first.page, first.totalPages, false)] : [],
+    components: paged ? [buildRow(first.page, first.totalPages, false, t)] : [],
     allowedMentions: NO_MENTIONS,
   };
 
@@ -92,7 +94,7 @@ export async function paginate(
         currentPage = next.page;
         await component.update({
           embeds: [next.embed],
-          components: [buildRow(next.page, next.totalPages, false)],
+          components: [buildRow(next.page, next.totalPages, false, t)],
           allowedMentions: NO_MENTIONS,
         });
       } catch {
@@ -105,7 +107,7 @@ export async function paginate(
     try {
       const latest = render(currentPage);
       interaction
-        .editReply({ components: [buildRow(latest.page, latest.totalPages, true)] })
+        .editReply({ components: [buildRow(latest.page, latest.totalPages, true, t)] })
         .catch(() => undefined);
     } catch {
       // The renderer failed (e.g. player gone): leave the message as is.

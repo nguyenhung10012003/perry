@@ -52,16 +52,16 @@ die() {
 require_docker() {
   local version major
   if ! command -v docker >/dev/null 2>&1; then
-    err "Chưa cài Docker."
-    err "Cài Docker Engine: https://docs.docker.com/engine/install/"
+    err "Docker is not installed."
+    err "Install Docker Engine: https://docs.docker.com/engine/install/"
     exit 1
   fi
   if ! docker info >/dev/null 2>&1; then
-    die "Không kết nối được Docker daemon. Hãy bật Docker (Docker Desktop hoặc: sudo systemctl start docker) và đảm bảo user hiện tại có quyền dùng docker."
+    die "Cannot connect to the Docker daemon. Start Docker (Docker Desktop or: sudo systemctl start docker) and make sure the current user is allowed to use docker."
   fi
   if ! version="$(docker compose version --short 2>/dev/null)"; then
-    err "Chưa có Docker Compose v2 (lệnh 'docker compose')."
-    err "Cài Compose: https://docs.docker.com/compose/install/"
+    err "Docker Compose v2 (the 'docker compose' command) is not available."
+    err "Install Compose: https://docs.docker.com/compose/install/"
     exit 1
   fi
   version="${version#v}"
@@ -70,8 +70,8 @@ require_docker() {
     '' | *[!0-9]*) major=0 ;;
   esac
   if [ "$major" -lt 2 ]; then
-    err "Cần Docker Compose v2 trở lên (hiện có: $version)."
-    err "Cài Compose: https://docs.docker.com/compose/install/"
+    err "Docker Compose v2 or newer is required (found: $version)."
+    err "Install Compose: https://docs.docker.com/compose/install/"
     exit 1
   fi
 }
@@ -153,17 +153,17 @@ missing_env_names() {
   printf '%s\n' "${missing# }"
 }
 
-# require_env_file: stop with a Vietnamese message unless the env file has all required names.
+# require_env_file: stop with an error message unless the env file has all required names.
 require_env_file() {
   local file missing
   file="$(env_file_path)"
   if [ ! -f "$file" ]; then
-    die "Chưa có tệp cấu hình ($file). Hãy chạy ./scripts/setup.sh trước."
+    die "The config file ($file) does not exist. Run ./scripts/setup.sh first."
   fi
   missing="$(missing_env_names)"
   if [ -n "$missing" ]; then
-    err "Tệp cấu hình còn thiếu giá trị cho: $missing"
-    die "Hãy chạy lại ./scripts/setup.sh để điền các giá trị còn thiếu."
+    err "The config file is missing values for: $missing"
+    die "Run ./scripts/setup.sh again to fill in the missing values."
   fi
 }
 
@@ -187,7 +187,7 @@ random_hex() {
   fi
   out="$(od -An -N"$bytes" -tx1 /dev/urandom | tr -d ' \n')"
   if [ "${#out}" -ne $((bytes * 2)) ]; then
-    die "Không sinh được số ngẫu nhiên (cần openssl hoặc /dev/urandom)."
+    die "Could not generate random bytes (openssl or /dev/urandom is required)."
   fi
   printf '%s\n' "$out"
 }
@@ -331,16 +331,16 @@ svc_exec_i() {
 
 state_label() {
   case "$1" in
-    healthy) printf 'khỏe\n' ;;
-    unhealthy) printf 'không khỏe\n' ;;
-    starting) printf 'đang khởi động\n' ;;
-    running) printf 'đang chạy\n' ;;
-    restarting) printf 'đang khởi động lại liên tục\n' ;;
-    exited) printf 'đã dừng\n' ;;
-    created) printf 'đã tạo\n' ;;
-    paused) printf 'tạm dừng\n' ;;
-    dead) printf 'lỗi (dead)\n' ;;
-    absent) printf 'chưa chạy\n' ;;
+    healthy) printf 'healthy\n' ;;
+    unhealthy) printf 'unhealthy\n' ;;
+    starting) printf 'starting\n' ;;
+    running) printf 'running\n' ;;
+    restarting) printf 'restarting repeatedly\n' ;;
+    exited) printf 'stopped\n' ;;
+    created) printf 'created\n' ;;
+    paused) printf 'paused\n' ;;
+    dead) printf 'failed (dead)\n' ;;
+    absent) printf 'not running\n' ;;
     *) printf '%s\n' "$1" ;;
   esac
 }
@@ -403,7 +403,7 @@ wait_healthy() {
       if [ "$service" != "lavalink-init" ] && [ "$restarts" -gt "${base[i]}" ]; then
         kind="bad"
         WAIT_FAILED_REASON="restart"
-        info "  $service: đã tự khởi động lại $((restarts - base[i])) lần trong lúc chờ"
+        info "  $service: restarted $((restarts - base[i])) time(s) while waiting"
       fi
       if [ "$kind" = "bad" ]; then
         WAIT_FAILED_SERVICE="$service"
@@ -431,7 +431,7 @@ show_logs() {
   local cid
   cid="$(service_cid "$1")"
   if [ -z "$cid" ]; then
-    warn "Không có container của dịch vụ '$1' để đọc log."
+    warn "No container for service '$1' to read logs from."
     return 0
   fi
   docker logs --tail "$2" "$cid" 2>&1 || true
@@ -441,21 +441,21 @@ show_logs() {
 # service's last 30 log lines. Returns the wait_healthy status.
 wait_stack_ready() {
   local rc=0
-  info "Chờ các dịch vụ sẵn sàng (tối đa $1 giây)..."
+  info "Waiting for the services to become ready (up to $1 seconds)..."
   # shellcheck disable=SC2086
   wait_healthy "$1" $STACK_SERVICES || rc=$?
   if [ "$rc" -eq 0 ]; then
-    ok "Tất cả dịch vụ đã sẵn sàng."
+    ok "All services are ready."
     return 0
   fi
   if [ "$rc" -eq 2 ]; then
-    err "Hết thời gian chờ: dịch vụ '$WAIT_FAILED_SERVICE' chưa sẵn sàng."
+    err "Timed out: service '$WAIT_FAILED_SERVICE' is not ready yet."
   elif [ "$WAIT_FAILED_REASON" = "restart" ]; then
-    err "Dịch vụ '$WAIT_FAILED_SERVICE' liên tục tự khởi động lại (crash loop)."
+    err "Service '$WAIT_FAILED_SERVICE' keeps restarting (crash loop)."
   else
-    err "Dịch vụ '$WAIT_FAILED_SERVICE' không khỏe ($(state_label "$(service_state "$WAIT_FAILED_SERVICE")"))."
+    err "Service '$WAIT_FAILED_SERVICE' is not healthy ($(state_label "$(service_state "$WAIT_FAILED_SERVICE")"))."
   fi
-  err "30 dòng log cuối của '$WAIT_FAILED_SERVICE':"
+  err "Last 30 log lines of '$WAIT_FAILED_SERVICE':"
   show_logs "$WAIT_FAILED_SERVICE" 30 >&2
   return "$rc"
 }
@@ -466,10 +466,10 @@ build_or_pull() {
   export_build_metadata
   image="$(effective_env BOT_IMAGE)"
   if [ -n "$image" ]; then
-    info "Tải image dựng sẵn: $image"
+    info "Pulling prebuilt image: $image"
     compose pull bot
   else
-    info "Build image bot từ mã nguồn (phiên bản $PERRY_VERSION, revision $PERRY_REVISION)..."
+    info "Building the bot image from source (version $PERRY_VERSION, revision $PERRY_REVISION)..."
     compose build bot
   fi
 }
@@ -491,7 +491,7 @@ confirm() {
     return 1
   fi
   if [ "$mode" = "strict" ]; then
-    printf '%s\n  Gõ "yes" để tiếp tục: ' "$message" >&2
+    printf '%s\n  Type "yes" to continue: ' "$message" >&2
   else
     printf '%s [y/N]: ' "$message" >&2
   fi
@@ -527,17 +527,17 @@ backup_dump() {
   tmp="$(umask 077 && mktemp "$dir/.perry-dump.XXXXXX")"
   if ! svc_exec_i postgres pg_dump -U perry -d perry -Fc >"$tmp"; then
     rm -f "$tmp"
-    err "pg_dump thất bại."
+    err "pg_dump failed."
     return 1
   fi
   if [ ! -s "$tmp" ]; then
     rm -f "$tmp"
-    err "Tệp sao lưu rỗng."
+    err "The backup file is empty."
     return 1
   fi
   if ! validate_dump "$tmp"; then
     rm -f "$tmp"
-    err "Tệp sao lưu không đọc được bằng pg_restore --list."
+    err "The backup file cannot be read by pg_restore --list."
     return 1
   fi
   chmod 600 "$tmp"

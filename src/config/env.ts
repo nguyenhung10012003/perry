@@ -1,6 +1,8 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { FALLBACK_LOCALE, LOCALES } from "../i18n/locales.js";
+import type { Locale } from "../i18n/locales.js";
 import { registerSecrets } from "../utils/errors.js";
 
 const booleanString = z.enum(["true", "false"]).transform((v) => v === "true");
@@ -101,6 +103,9 @@ const schema = z
       .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
       .default("info"),
     LOG_PRETTY: booleanString.default(false),
+    DEFAULT_LOCALE: optionalText
+      .pipe(z.enum(LOCALES).optional())
+      .transform((value) => value ?? FALLBACK_LOCALE),
     STORAGE_DRIVER: z.enum(["persistent", "memory"]).default("persistent"),
     DATABASE_URL: optionalText,
     REDIS_URL: optionalText,
@@ -173,6 +178,8 @@ export interface Config {
   };
   readonly logLevel: z.infer<typeof schema>["LOG_LEVEL"];
   readonly logPretty: boolean;
+  /** Bot language for guilds without their own language setting (DEFAULT_LOCALE, default en). */
+  readonly defaultLocale: Locale;
   readonly storage: {
     readonly driver: "persistent" | "memory";
     readonly databaseUrl: string | undefined;
@@ -238,6 +245,7 @@ export function loadConfig(): Config {
     }),
     logLevel: env.LOG_LEVEL,
     logPretty: env.LOG_PRETTY,
+    defaultLocale: env.DEFAULT_LOCALE,
     storage: Object.freeze({
       driver: env.STORAGE_DRIVER,
       databaseUrl: env.DATABASE_URL,

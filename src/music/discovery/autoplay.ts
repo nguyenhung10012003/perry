@@ -6,7 +6,6 @@ import {
   DISCOVERY_MIN_RESULTS,
   DISCOVERY_TIMEOUT_MS,
 } from '../../config/constants.js';
-import { t } from '../../i18n/index.js';
 import { safeError } from '../../utils/errors.js';
 import { countHumans } from '../lifecycle.js';
 import type { MusicService } from '../music-service.js';
@@ -102,7 +101,7 @@ export class AutoplayController {
       state.autoplayPaused = true;
       if (!state.discoveryNoticeSent) {
         state.discoveryNoticeSent = true;
-        service.track(sendNotice(service, player.textChannelId, t.autoplay.nothingFound));
+        service.track(sendNotice(service, player.textChannelId, (t) => t.autoplay.nothingFound));
       }
     } catch (err) {
       this.service.logger.warn({ err: safeError(err), guildId: player.guildId }, 'Autoplay failed');

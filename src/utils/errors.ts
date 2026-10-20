@@ -1,8 +1,19 @@
-/** An error whose message is safe and meant to be shown to the user (already localized). */
+import { en } from '../i18n/index.js';
+import type { Messages } from '../i18n/index.js';
+
+/**
+ * An error meant to be shown to the user. It stores a catalog selector so every catch site renders it in the
+ * guild's language with localized(t); `message` is the English text (used in logs).
+ */
 export class UserError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(private readonly select: (t: Messages) => string) {
+    super(select(en));
     this.name = 'UserError';
+  }
+
+  /** The user-facing text from the given catalog. */
+  localized(t: Messages): string {
+    return this.select(t);
   }
 }
 

@@ -1,7 +1,6 @@
 import { ChannelType, PermissionFlagsBits } from "discord.js";
 import type { LavalinkNode } from "lavalink-client";
 import { RESTORE_STAGGER_MS } from "../../config/constants.js";
-import { t } from "../../i18n/index.js";
 import { safeError } from "../../utils/errors.js";
 import { applyFilterPreset } from "../filters.js";
 import { countHumans } from "../lifecycle.js";
@@ -163,7 +162,7 @@ export async function restoreGuild(
     }
     const trackCount = queued.length + (current ? 1 : 0);
     service.track(
-      sendNotice(service, snapshot.textChannelId, t.music.restored(trackCount)),
+      sendNotice(service, snapshot.textChannelId, (t) => t.music.restored(trackCount)),
     );
     logger.info(
       { guildId, tracks: trackCount, positionMs: position },

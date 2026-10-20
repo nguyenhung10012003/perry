@@ -115,9 +115,10 @@ async function createConfiguredStorage(config: Config, logger: Logger): Promise<
   const pgHealth = new BackendHealth({
     name: 'Postgres',
     logger: log,
-    // Probes the schema too, so a database without migrations stays "down" until `npm run db:migrate` was run.
+    // Probes the schema too (incl. the newest column), so a database without current migrations stays "down"
+    // until `npm run db:migrate` was run.
     probe: async () => {
-      await db.execute(sql`select 1 from guild_settings limit 0`);
+      await db.execute(sql`select language from guild_settings limit 0`);
     },
   });
   const redisHealth = redis.health;
@@ -126,7 +127,7 @@ async function createConfiguredStorage(config: Config, logger: Logger): Promise<
     try {
       const schemaReady = await withTimeout(ensureSchema(db, log), STORAGE_STARTUP_TIMEOUT_MS);
       if (schemaReady) pgHealth.markUp();
-      else pgHealth.markDown(new Error('Database schema is missing'), true);
+      else pgHealth.markDown(new Error('Database schema is missing or outdated'), true);
     } catch (err) {
       pgHealth.markDown(err);
     }
