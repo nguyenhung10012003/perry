@@ -1,0 +1,29 @@
+# VCS, agent workspace, editor files
+.git
+.agents
+.github
+.vscode
+.idea
+.DS_Store
+
+# Built or installed on the host; the image builds its own
+node_modules
+dist
+
+# Never send secrets or local state into the build context (also keeps .env.example out)
+.env*
+backups
+logs
+*.log
+
+# Not needed to build or run the bot
+lavalink
+docs
+*.md
+Dockerfile
+.dockerignore
+docker-compose*.yml
+Makefile
+scripts
+eslint.config.js
+drizzle.config.ts

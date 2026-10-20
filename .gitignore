@@ -1,0 +1,14 @@
+node_modules
+dist
+.env
+.env.*
+!.env.example
+lavalink/plugins/*
+!lavalink/plugins/.gitkeep
+lavalink/logs
+logs
+*.log
+.agents/
+.DS_Store
+backups/
+.vscode/

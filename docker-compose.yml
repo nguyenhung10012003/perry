@@ -1,0 +1,195 @@
+# Perry: full production stack. `docker compose up -d` (or `make up`) starts everything.
+#
+#   bot            Discord bot, built from this repository (or pulled when BOT_IMAGE is set)
+#   lavalink-init  one-shot root job that fixes ownership of the plugin cache volume, then exits
+#   lavalink       audio server (plugins are downloaded on the first start, 30-90 s)
+#   postgres       settings and optional play history
+#   redis          cooldowns, caches and player snapshots
+#
+# Nothing is published to the host: the bot reaches the other services by service name over
+# the private networks below. Lavalink, Postgres and Redis are never reachable from the internet.
+# Secrets come from .env (create it with ./scripts/setup.sh); there are no default passwords.
+#
+# To run only the infrastructure for `npm run dev`, use docker-compose.dev.yml instead.
+# Keep the image tags of both files identical.
+name: perry
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  bot:
+    build:
+      context: .
+      args:
+        VERSION: "${PERRY_VERSION:-dev}"
+        REVISION: "${PERRY_REVISION:-unknown}"
+        SOURCE_URL: "${PERRY_SOURCE_URL:-}"
+    # Set BOT_IMAGE in .env (for example ghcr.io/<owner>/<repo>:1.2.0) to pull a prebuilt image instead.
+    image: "${BOT_IMAGE:-perry-bot:local}"
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 30s
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+    networks:
+      - lavalink
+      - data
+    depends_on:
+      lavalink:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # The HEALTHCHECK (heartbeat file) is defined in the image.
+    environment:
+      DISCORD_TOKEN: "${DISCORD_TOKEN:?Chưa đặt DISCORD_TOKEN trong .env, hãy chạy ./scripts/setup.sh}"
+      DISCORD_CLIENT_ID: "${DISCORD_CLIENT_ID:?Chưa đặt DISCORD_CLIENT_ID trong .env, hãy chạy ./scripts/setup.sh}"
+      DEV_GUILD_ID: "${DEV_GUILD_ID:-}"
+      LAVALINK_HOST: lavalink
+      LAVALINK_PORT: "2333"
+      LAVALINK_PASSWORD: "${LAVALINK_PASSWORD:?Chưa đặt LAVALINK_PASSWORD trong .env, hãy chạy ./scripts/setup.sh}"
+      LAVALINK_SECURE: "false"
+      STORAGE_DRIVER: persistent
+      DATABASE_URL: "postgres://perry:${POSTGRES_PASSWORD:?Chưa đặt POSTGRES_PASSWORD trong .env, hãy chạy ./scripts/setup.sh}@postgres:5432/perry"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:?Chưa đặt REDIS_PASSWORD trong .env, hãy chạy ./scripts/setup.sh}@redis:6379"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+      LOG_PRETTY: "${LOG_PRETTY:-false}"
+      REDIS_KEY_PREFIX: "${REDIS_KEY_PREFIX:-perry}"
+      PLAYER_RESTORE: "${PLAYER_RESTORE:-true}"
+      PLAY_HISTORY: "${PLAY_HISTORY:-false}"
+      PUBSUB_INVALIDATION: "${PUBSUB_INVALIDATION:-false}"
+      DISCOVERY_PROVIDERS: "${DISCOVERY_PROVIDERS:-ytmix,lastfm,lavasrc,artist}"
+      LASTFM_API_KEY: "${LASTFM_API_KEY:-}"
+      DISCOVERY_LAVASRC_PREFIX: "${DISCOVERY_LAVASRC_PREFIX:-}"
+      DISCOVERY_MIN_DURATION_SEC: "${DISCOVERY_MIN_DURATION_SEC:-60}"
+      DISCOVERY_MAX_DURATION_SEC: "${DISCOVERY_MAX_DURATION_SEC:-1200}"
+      AUTO_MIGRATE: "${AUTO_MIGRATE:-true}"
+      REGISTER_COMMANDS_ON_START: "${REGISTER_COMMANDS_ON_START:-true}"
+      REGISTER_COMMANDS_FORCE: "${REGISTER_COMMANDS_FORCE:-false}"
+    # Optional resource limits (not enabled). Uncomment and adjust to your VPS:
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: "1.0"
+    #       memory: 512M
+
+  # One-shot: the named volume is created root-owned, but Lavalink runs as uid 322.
+  lavalink-init:
+    image: ghcr.io/lavalink-devs/lavalink:4.2.2
+    user: "0:0"
+    entrypoint: ["sh", "-c", "chown -R 322:322 /opt/Lavalink/plugins"]
+    restart: "no"
+    network_mode: none
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+    logging: *default-logging
+    volumes:
+      - lavalink-plugins:/opt/Lavalink/plugins
+
+  lavalink:
+    image: ghcr.io/lavalink-devs/lavalink:4.2.2
+    restart: unless-stopped
+    stop_grace_period: 30s
+    logging: *default-logging
+    depends_on:
+      lavalink-init:
+        condition: service_completed_successfully
+    environment:
+      JAVA_TOOL_OPTIONS: "${LAVALINK_JAVA_OPTS:--Xmx1G}"
+      LAVALINK_SERVER_PASSWORD: "${LAVALINK_PASSWORD:?Chưa đặt LAVALINK_PASSWORD trong .env, hãy chạy ./scripts/setup.sh}"
+      LAVASRC_SPOTIFY_ENABLED: "${LAVASRC_SPOTIFY_ENABLED:-false}"
+      SPOTIFY_CLIENT_ID: "${SPOTIFY_CLIENT_ID:-}"
+      SPOTIFY_CLIENT_SECRET: "${SPOTIFY_CLIENT_SECRET:-}"
+      SPOTIFY_COUNTRY_CODE: "${SPOTIFY_COUNTRY_CODE:-US}"
+      # Optional YouTube anti-bot workarounds. Only read by the commented-out oauth/pot blocks in lavalink/application.yml.
+      YOUTUBE_OAUTH_REFRESH_TOKEN: "${YOUTUBE_OAUTH_REFRESH_TOKEN:-}"
+      YOUTUBE_PO_TOKEN: "${YOUTUBE_PO_TOKEN:-}"
+      YOUTUBE_VISITOR_DATA: "${YOUTUBE_VISITOR_DATA:-}"
+    volumes:
+      - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
+      - lavalink-plugins:/opt/Lavalink/plugins
+    networks:
+      - lavalink
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'curl -fsS -H "Authorization: $${LAVALINK_SERVER_PASSWORD}" http://localhost:2333/version || exit 1',
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+    # Optional resource limits (not enabled). Keep memory above the JVM heap in LAVALINK_JAVA_OPTS:
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: "2.0"
+    #       memory: 1536M
+
+  postgres:
+    image: postgres:18.6-alpine3.24
+    restart: unless-stopped
+    stop_grace_period: 30s
+    logging: *default-logging
+    environment:
+      POSTGRES_USER: perry
+      POSTGRES_DB: perry
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Chưa đặt POSTGRES_PASSWORD trong .env, hãy chạy ./scripts/setup.sh}"
+    volumes:
+      # Postgres 18+ images keep PGDATA under /var/lib/postgresql/<major>/docker, so mount one level up.
+      - postgres-data:/var/lib/postgresql
+    networks:
+      - data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U perry -d perry"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  redis:
+    image: redis:8.8.3-alpine3.23
+    restart: unless-stopped
+    stop_grace_period: 30s
+    logging: *default-logging
+    environment:
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?Chưa đặt REDIS_PASSWORD trong .env, hãy chạy ./scripts/setup.sh}"
+      # Lets redis-cli authenticate in the healthcheck without a password on the command line.
+      REDISCLI_AUTH: "${REDIS_PASSWORD:?Chưa đặt REDIS_PASSWORD trong .env, hãy chạy ./scripts/setup.sh}"
+    command:
+      - sh
+      - -c
+      - exec redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes --appendfsync everysec --maxmemory 256mb --maxmemory-policy volatile-lru
+    volumes:
+      - redis-data:/data
+    networks:
+      - data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+volumes:
+  postgres-data:
+  redis-data:
+  lavalink-plugins:
+
+networks:
+  lavalink:
+  data:

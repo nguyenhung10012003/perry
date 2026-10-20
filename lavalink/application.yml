@@ -1,0 +1,122 @@
+# Lavalink v4.2.2 configuration for the Perry music bot.
+# The server password is NOT set here: docker-compose passes LAVALINK_SERVER_PASSWORD (from .env LAVALINK_PASSWORD).
+# Secrets use ${ENV_VAR:default} placeholders resolved by Spring from the container environment.
+server:
+  port: 2333
+  address: 0.0.0.0
+  http2:
+    enabled: false
+
+lavalink:
+  plugins:
+    # YouTube (replaces the deprecated built-in source). Pinned snapshot of main (2026-09-17), see plan D3.
+    # Fallback (stable release): dependency "dev.lavalink.youtube:youtube-plugin:1.18.2" with snapshot: false
+    - dependency: "dev.lavalink.youtube:youtube-plugin:2be8e542d3f6f178e048dca565892684c2e40177"
+      snapshot: true
+    - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.8.3"
+      snapshot: false
+    - dependency: "com.github.topi314.lavalyrics:lavalyrics-plugin:1.1.0"
+      snapshot: false
+  server:
+    sources:
+      youtube: false # built-in source is deprecated; the youtube-source plugin handles YouTube
+      soundcloud: true
+      bandcamp: true
+      twitch: true
+      vimeo: true
+      nico: false
+      http: true # direct stream URLs. The bot filters private/loopback targets (see README security notes)
+      local: false
+    bufferDurationMs: 400
+    frameBufferDurationMs: 5000
+    opusEncodingQuality: 10
+    resamplingQuality: LOW
+    trackStuckThresholdMs: 10000
+    youtubePlaylistLoadLimit: 6 # pages of 100
+    playerUpdateInterval: 5
+    youtubeSearchEnabled: true
+    soundcloudSearchEnabled: true
+    gc-warnings: true
+
+plugins:
+  youtube:
+    enabled: true
+    allowSearch: true
+    allowDirectVideoIds: true
+    allowDirectPlaylistIds: true
+    # WEB must stay before IOS (upstream issue #250: IOS first makes ytsearch return empty).
+    clients:
+      - MUSIC
+      - WEB
+      - IOS
+      - ANDROID_VR
+      - TVHTML5_SIMPLY
+      - WEBEMBEDDED
+    # --- If YouTube answers "Sign in to confirm you're not a bot" (use a BURNER account, never your main) ---
+    # Option A - OAuth (then also add TV to `clients`). Uncomment, restart, follow the code shown in `docker compose logs lavalink`:
+    # oauth:
+    #   enabled: true
+    #   refreshToken: "${YOUTUBE_OAUTH_REFRESH_TOKEN}"   # after the first successful flow, the log prints it
+    # Option B - poToken + visitorData (do not combine with OAuth):
+    # pot:
+    #   token: "${YOUTUBE_PO_TOKEN}"
+    #   visitorData: "${YOUTUBE_VISITOR_DATA}"
+  lavasrc:
+    # Mirroring providers: Spotify/others are resolved to a playable YouTube track.
+    providers:
+      - 'ytsearch:"%ISRC%"'
+      - "ytsearch:%QUERY%"
+    sources:
+      spotify: ${LAVASRC_SPOTIFY_ENABLED:false}
+      applemusic: false
+      deezer: false
+      yandexmusic: false
+      flowerytts: false
+      youtube: false
+      vkmusic: false
+      tidal: false
+      qobuz: false
+      ytdlp: false
+      jiosaavn: false
+    lyrics-sources:
+      spotify: false
+      deezer: false
+      youtube: true # keyless
+      yandexmusic: false
+      vkmusic: false
+      lrcLib: true # keyless (https://lrclib.net), rate limited
+    spotify:
+      clientId: "${SPOTIFY_CLIENT_ID:}"
+      clientSecret: "${SPOTIFY_CLIENT_SECRET:}"
+      countryCode: "${SPOTIFY_COUNTRY_CODE:US}"
+      playlistLoadLimit: 6
+      albumLoadLimit: 6
+    youtube:
+      countryCode: "US"
+      language: "en"
+  # plugins.lavalyrics.sources is intentionally omitted: the LRCLIB manager reports an empty source name, so it cannot be ordered by name.
+
+metrics:
+  prometheus:
+    enabled: false
+
+sentry:
+  dsn: ""
+
+logging:
+  file:
+    path: ./logs/
+  level:
+    root: INFO
+    lavalink: INFO
+  request:
+    enabled: true
+    includeClientInfo: true
+    includeHeaders: false # keeps the Authorization header out of logs
+    includeQueryString: true
+    includePayload: false # payloads contain Discord voice tokens
+    maxPayloadLength: 10000
+  logback:
+    rollingpolicy:
+      max-file-size: 50MB
+      max-history: 7

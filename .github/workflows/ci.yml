@@ -1,0 +1,77 @@
+# CI: kiểm tra mã nguồn, build image Docker (không push) và xác thực compose.
+# Workflow này chỉ được viết, chưa từng chạy trên GitHub.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node:
+    name: Typecheck, lint, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
+      - run: npm run check-commands
+
+  docker:
+    name: Docker image, scripts, compose
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Shellcheck
+        run: shellcheck -x scripts/*.sh scripts/lib/common.sh
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build image (no push)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          tags: perry-bot:ci
+          build-args: |
+            SOURCE_URL=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Validate compose files and image pins
+        env:
+          # Giá trị giả, chỉ để `docker compose config` qua được các guard :?
+          DISCORD_TOKEN: dummy-token-for-ci-config-check
+          DISCORD_CLIENT_ID: "123456789012345678"
+          LAVALINK_PASSWORD: dummy-lavalink
+          POSTGRES_PASSWORD: dummy-postgres
+          REDIS_PASSWORD: dummy-redis
+        run: |
+          set -euo pipefail
+          docker compose config -q
+          docker compose -f docker-compose.dev.yml config -q
+          # Lavalink/Postgres/Redis phải dùng cùng tag ở cả hai file.
+          prod=$(docker compose config --images | grep -v '^perry-bot:' | sort -u)
+          dev=$(docker compose -f docker-compose.dev.yml --profile storage config --images | sort -u)
+          if [ "$prod" != "$dev" ]; then
+            echo "Image tag không khớp giữa docker-compose.yml và docker-compose.dev.yml:" >&2
+            diff <(echo "$prod") <(echo "$dev") >&2 || true
+            exit 1
+          fi
+          echo "$prod"

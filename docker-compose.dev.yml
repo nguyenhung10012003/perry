@@ -1,0 +1,140 @@
+# Perry: development infrastructure for `npm run dev` / host-run bot. There is NO bot service here.
+#
+#   docker compose -f docker-compose.dev.yml up -d lavalink                 Lavalink only (STORAGE_DRIVER=memory)
+#   docker compose -f docker-compose.dev.yml --profile storage up -d        Lavalink + Postgres + Redis
+#   npm run dev:lavalink | lavalink:up | lavalink:down | lavalink:logs      shortcuts for the commands above
+#
+# Why a separate file: Compose evaluates every ${VAR:?message} guard of the WHOLE file, even for services
+# under an inactive profile or pulled in through `extends`. So the Postgres and Redis password checks
+# cannot live next to a guard-free Lavalink in docker-compose.yml. Here only LAVALINK_PASSWORD is guarded
+# at interpolation time; the Postgres/Redis passwords are checked when their containers start.
+#
+# Ports are published on 127.0.0.1 only. Never publish them on other interfaces.
+# Keep the image tags identical to docker-compose.yml (CI compares them).
+# Volume and network names match the v1.1 setup, so existing local dev data stays attached.
+name: perry-lavalink
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # One-shot: the named volume is created root-owned, but Lavalink runs as uid 322.
+  lavalink-init:
+    image: ghcr.io/lavalink-devs/lavalink:4.2.2
+    user: "0:0"
+    entrypoint: ["sh", "-c", "chown -R 322:322 /opt/Lavalink/plugins"]
+    restart: "no"
+    network_mode: none
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+    logging: *default-logging
+    volumes:
+      - lavalink-plugins:/opt/Lavalink/plugins
+
+  lavalink:
+    image: ghcr.io/lavalink-devs/lavalink:4.2.2
+    restart: unless-stopped
+    stop_grace_period: 30s
+    logging: *default-logging
+    depends_on:
+      lavalink-init:
+        condition: service_completed_successfully
+    environment:
+      JAVA_TOOL_OPTIONS: "${LAVALINK_JAVA_OPTS:--Xmx1G}"
+      LAVALINK_SERVER_PASSWORD: "${LAVALINK_PASSWORD:?Chưa đặt LAVALINK_PASSWORD trong .env, hãy chạy ./scripts/setup.sh}"
+      LAVASRC_SPOTIFY_ENABLED: "${LAVASRC_SPOTIFY_ENABLED:-false}"
+      SPOTIFY_CLIENT_ID: "${SPOTIFY_CLIENT_ID:-}"
+      SPOTIFY_CLIENT_SECRET: "${SPOTIFY_CLIENT_SECRET:-}"
+      SPOTIFY_COUNTRY_CODE: "${SPOTIFY_COUNTRY_CODE:-US}"
+      # Optional YouTube anti-bot workarounds. Only read by the commented-out oauth/pot blocks in lavalink/application.yml.
+      YOUTUBE_OAUTH_REFRESH_TOKEN: "${YOUTUBE_OAUTH_REFRESH_TOKEN:-}"
+      YOUTUBE_PO_TOKEN: "${YOUTUBE_PO_TOKEN:-}"
+      YOUTUBE_VISITOR_DATA: "${YOUTUBE_VISITOR_DATA:-}"
+    volumes:
+      - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
+      - lavalink-plugins:/opt/Lavalink/plugins
+    ports:
+      - "127.0.0.1:${LAVALINK_PORT:-2333}:2333"
+    networks:
+      - lavalink
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'curl -fsS -H "Authorization: $${LAVALINK_SERVER_PASSWORD}" http://localhost:2333/version || exit 1',
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+
+  postgres:
+    image: postgres:18.6-alpine3.24
+    profiles: ["storage"]
+    restart: unless-stopped
+    stop_grace_period: 30s
+    logging: *default-logging
+    environment:
+      POSTGRES_USER: perry
+      POSTGRES_DB: perry
+      # Checked by the postgres image itself at container start (it refuses to start without a password).
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-}"
+    volumes:
+      # Postgres 18+ images keep PGDATA under /var/lib/postgresql/<major>/docker, so mount one level up.
+      - postgres-data:/var/lib/postgresql
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    networks:
+      - data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U perry -d perry"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  redis:
+    image: redis:8.8.3-alpine3.23
+    profiles: ["storage"]
+    restart: unless-stopped
+    stop_grace_period: 30s
+    logging: *default-logging
+    environment:
+      REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
+      # Lets redis-cli authenticate in the healthcheck without a password on the command line.
+      REDISCLI_AUTH: "${REDIS_PASSWORD:-}"
+    # Runtime guard instead of a ${...:?} guard, see the header comment.
+    command:
+      - sh
+      - -c
+      - |
+        test -n "$$REDIS_PASSWORD" || { echo "Chưa đặt REDIS_PASSWORD trong .env (REDIS_PASSWORD is empty), hãy chạy ./scripts/setup.sh" >&2; exit 1; }
+        exec redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes --appendfsync everysec --maxmemory 256mb --maxmemory-policy volatile-lru
+    volumes:
+      - redis-data:/data
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    networks:
+      - data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+volumes:
+  postgres-data:
+  redis-data:
+  lavalink-plugins:
+
+networks:
+  lavalink:
+    name: perry-lavalink
+  data:
+    name: perry-data
