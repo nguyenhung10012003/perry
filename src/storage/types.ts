@@ -114,6 +114,67 @@ export interface CaseStore {
   clearWarnings(guildId: string, userId: string): Promise<Result<number>>;
 }
 
+/** Input of LevelStore.grant(); amount is 1..125 (rollXp at most 500 %). */
+export interface GrantInput {
+  guildId: string;
+  userId: string;
+  amount: number;
+  username: string | null;
+  avatar: string | null;
+}
+
+export interface MemberLevel {
+  guildId: string;
+  userId: string;
+  xp: number;
+  level: number;
+  username: string | null;
+  avatar: string | null;
+  updatedAt: Date;
+}
+
+export interface LevelReward {
+  level: number;
+  roleId: string;
+}
+
+/** XP and level after a write; level > previousLevel only for the write that raised the stored level. */
+export interface LevelChange {
+  xp: number;
+  level: number;
+  previousLevel: number;
+}
+
+/** An admin change of a member's XP (`/xp`); amount is 0..2,000,000,000. */
+export interface XpAdjustment {
+  kind: 'add' | 'remove' | 'set';
+  amount: number;
+}
+
+/**
+ * XP and levels per member and guild, and the role rewards of a guild. { ok: false } means Postgres is unavailable.
+ * Callers pass only range-checked values (repo input rule in level-repo.ts).
+ */
+export interface LevelStore {
+  grant(input: GrantInput): Promise<Result<LevelChange>>;
+  get(guildId: string, userId: string): Promise<Result<MemberLevel | null>>;
+  /** Positional rank (1-based) of a member with this xp and user id; equals the member's leaderboard position. */
+  rank(guildId: string, xp: number, userId: string): Promise<Result<number>>;
+  count(guildId: string): Promise<Result<number>>;
+  /** Members by XP (highest first, ties by user id). offset is already clamped by the caller (clampPage). */
+  page(guildId: string, offset: number, limit: number): Promise<Result<MemberLevel[]>>;
+  /** Sets XP and level together (the level follows the XP, also downwards). A missing row starts at 0. */
+  adjust(guildId: string, userId: string, op: XpAdjustment): Promise<Result<LevelChange>>;
+  /** Deletes the member's row; true when it existed. */
+  reset(guildId: string, userId: string): Promise<Result<boolean>>;
+  /** Role rewards of the guild, lowest level first. */
+  rewards(guildId: string): Promise<Result<LevelReward[]>>;
+  /** Best effort; called when the role was deleted. */
+  deleteRewardsForRole(guildId: string, roleId: string): Promise<void>;
+  /** Best effort; called when the bot was removed from the guild (DP-8 (b)). */
+  deleteRewards(guildId: string): Promise<void>;
+}
+
 export interface StorageHealth {
   readonly postgres: BackendHealth | null;
   readonly redis: BackendHealth | null;
@@ -129,6 +190,7 @@ export interface Storage {
   readonly snapshots: SnapshotStore;
   readonly history: HistoryStore;
   readonly cases: CaseStore;
+  readonly levels: LevelStore;
   readonly health: StorageHealth;
   /** Redis key scheme for the configured REDIS_KEY_PREFIX (single instance shared by every consumer). */
   readonly keys: Keys;

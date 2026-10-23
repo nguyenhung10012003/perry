@@ -14,12 +14,14 @@ import type { Keys } from './keys.js';
 import { MemoryKeyValueCache } from './memory/memory-cache.js';
 import { MemoryCaseStore } from './memory/memory-cases.js';
 import { MemoryCooldownStore, MemoryRateLimiter } from './memory/memory-cooldowns.js';
+import { MemoryLevelStore } from './memory/memory-levels.js';
 import { MemoryRecentlyPlayedStore } from './memory/memory-recent.js';
 import { NullSnapshotStore } from './memory/null-snapshots.js';
 import { PostgresCaseStore } from './postgres/case-repo.js';
 import { createPostgres, ensureSchema, SCHEMA_PROBE } from './postgres/client.js';
 import { recordPlay } from './postgres/history-repo.js';
 import type { PlayHistoryEntry } from './postgres/history-repo.js';
+import { PostgresLevelStore } from './postgres/level-repo.js';
 import { createRedis } from './redis/client.js';
 import { createSettingsInvalidation } from './redis/pubsub.js';
 import type { SettingsInvalidation } from './redis/pubsub.js';
@@ -75,6 +77,7 @@ function createMemoryStorage(keys: Keys): Storage {
     snapshots: new NullSnapshotStore(),
     history: noopHistory,
     cases: new MemoryCaseStore(),
+    levels: new MemoryLevelStore(),
     health: { postgres: null, redis: null },
     keys,
     purgeGuild(guildId): Promise<void> {
@@ -179,6 +182,7 @@ async function createConfiguredStorage(config: Config, logger: Logger): Promise<
     snapshots,
     history,
     cases: new PostgresCaseStore(db, pgHealth),
+    levels: new PostgresLevelStore(db, pgHealth),
     health: { postgres: pgHealth, redis: redisHealth },
     keys,
     async purgeGuild(guildId) {
