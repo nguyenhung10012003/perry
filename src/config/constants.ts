@@ -109,3 +109,48 @@ export const XP_IGNORED_MAX = 50;
 export const LEADERBOARD_PAGE_SIZE = 10;
 /** Largest `/leaderboard page` option (M11); the requested page is clamped to the last page anyway. */
 export const LEADERBOARD_PAGE_MAX = 10_000;
+/**
+ * Namespace of the per-guild advisory lock that serializes reward saves (`replaceRewards`). Two-int advisory keys do
+ * not overlap the migrator's single bigint key (MIGRATION_ADVISORY_LOCK_KEY = 726_572_001).
+ */
+export const REWARDS_LOCK_NAMESPACE = 726_572_002;
+
+/** Bot-mediated Redis bridge between the web and the bot (v1.4, DP-10 (b)). */
+export const BRIDGE_TIMEOUT_MS = { gmeta: 2000, 'automod.list': 5000, 'automod.put': 8000 } as const;
+export const BRIDGE_POLL_INTERVAL_MS = 100;
+export const BRIDGE_RESPONSE_TTL_SECONDS = 30;
+/** The bot rewrites its guild list (`botguilds`) this often, and 2 s after a guild join or leave. */
+export const BRIDGE_BOTGUILDS_INTERVAL_MS = 60_000;
+export const BRIDGE_BOTGUILDS_REFRESH_DELAY_MS = 2000;
+export const BRIDGE_BOTGUILDS_TTL_SECONDS = 180;
+/** Upper bound for deleting `botguilds` while the bot shuts down. */
+export const BRIDGE_STOP_TIMEOUT_MS = 500;
+
+/** Web dashboard (v1.4). */
+export const WEB_BODY_LIMIT_BYTES = 16_384;
+/** PUT /api/guilds/:id/automod/:kind: 1000 keywords of 60 Vietnamese characters are about 180 KB of JSON. */
+export const WEB_AUTOMOD_BODY_LIMIT_BYTES = 262_144;
+/** Repeats the settings DEL after a web write; above PG_QUERY_TIMEOUT_MS + REDIS_COMMAND_TIMEOUT_MS (design R3). */
+export const WEB_SETTINGS_REDEL_DELAY_MS = 3000;
+/** Sessions last at most 7 days (A20) and never longer than the Discord token. */
+export const WEB_SESSION_MAX_TTL_SECONDS = 604_800;
+export const WEB_OAUTH_STATE_TTL_SECONDS = 600;
+export const WEB_USER_GUILDS_TTL_SECONDS = 60;
+/** Cache of the bot's guild data reply (`gmeta:<guildId>`). */
+export const GUILD_META_TTL_SECONDS = 60;
+/** In-process memo of the parsed `botguilds` key. */
+export const WEB_BOT_GUILDS_MEMO_MS = 5000;
+/** Timeout of every Discord REST call the web makes with the user's token or the client credentials. */
+export const WEB_DISCORD_TIMEOUT_MS = 8000;
+export const WEB_LEADERBOARD_PAGE_SIZE = 25;
+export const WEB_LEADERBOARD_PAGE_MAX = 100;
+export const WEB_PUBLIC_LEADERBOARD_PAGE_MAX = 40;
+export const WEB_PUBLIC_LEADERBOARD_TTL_SECONDS = 30;
+/** Rate limits of the web (fixed windows on RedisRateLimiter, in-process fallback). */
+export const WEB_RATE_LIMITS = {
+  'web-auth': { max: 20, windowSeconds: 600 },
+  'web-api': { max: 120, windowSeconds: 60 },
+  'web-write': { max: 30, windowSeconds: 60 },
+  'web-refresh': { max: 6, windowSeconds: 60 },
+  'web-public': { max: 60, windowSeconds: 60 },
+} as const;

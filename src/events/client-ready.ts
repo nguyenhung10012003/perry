@@ -22,6 +22,8 @@ export const clientReady: BotEvent<Events.ClientReady> = {
       { user: readyClient.user.tag, guilds: readyClient.guilds.cache.size },
       "Bot ready",
     );
+    // Publishes the guild list for the web dashboard (DP-10 (b)); the bridge then rewrites it every 60 s.
+    client.bridge?.scheduleGuildsRefresh();
     // Fire-and-forget and never throws: registers the slash commands only when their definitions changed.
     if (client.config.startup.registerCommands) {
       void syncCommandsOnStart({

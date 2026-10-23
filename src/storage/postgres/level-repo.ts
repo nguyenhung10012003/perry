@@ -1,5 +1,5 @@
 import { and, asc, count, eq, gt, gte, lt, or, sql } from 'drizzle-orm';
-import { XP_TOTAL_MAX } from '../../config/constants.js';
+import { REWARDS_LOCK_NAMESPACE, XP_TOTAL_MAX } from '../../config/constants.js';
 import { levelForXp, totalXpForLevel } from '../../leveling/xp.js';
 import type { BackendHealth } from '../health.js';
 import type {
@@ -12,6 +12,7 @@ import type {
   XpAdjustment,
 } from '../types.js';
 import type { Database } from './client.js';
+import { pgErrorCode } from './client.js';
 import { levelRoleRewards, memberLevels } from './schema.js';
 
 /*
@@ -26,8 +27,15 @@ import { levelRoleRewards, memberLevels } from './schema.js';
  * - XP stays within 0..XP_TOTAL_MAX in the same statement that writes it (least() in the upsert, clamping in
  *   adjustXp), and the stored level never exceeds the level its XP supports (guarded update in grantXp, XP and level
  *   written together under a row lock in adjustXp).
+ * - replaceRewards (the web's reward save) takes a per-guild advisory lock first, so two saves of one guild never run
+ *   their delete-and-insert at the same time; a 23505 there is caught inside the callback and returned as
+ *   { conflict: true } (a defensive path only). Its rewards are validated by the web first (levels 1..1000, at most
+ *   LEVEL_REWARDS_MAX rows, unique levels and roles).
  * Any other SQLSTATE is rethrown, so attempt() reports it as an outage, as for every other repo.
  */
+
+/** SQLSTATE unique_violation. */
+const PG_UNIQUE_VIOLATION = '23505';
 
 type Row = typeof memberLevels.$inferSelect;
 
@@ -197,6 +205,38 @@ export async function deleteRewardsForRole(db: Database, guildId: string, roleId
 
 export async function deleteRewards(db: Database, guildId: string): Promise<void> {
   await db.delete(levelRoleRewards).where(eq(levelRoleRewards.guildId, guildId));
+}
+
+export type ReplaceRewardsResult = { conflict: false; rewards: LevelReward[] } | { conflict: true };
+
+/**
+ * Replaces the guild's reward set in one transaction (last writer wins). Under READ COMMITTED two unserialized
+ * delete-and-insert transactions with disjoint sets would both commit and leave their union, so the transaction
+ * first takes pg_advisory_xact_lock(REWARDS_LOCK_NAMESPACE, hashtext(guildId)); it is released at commit or rollback.
+ */
+export async function replaceRewards(
+  db: Database,
+  guildId: string,
+  rewards: readonly LevelReward[],
+): Promise<ReplaceRewardsResult> {
+  try {
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(${REWARDS_LOCK_NAMESPACE}, hashtext(${guildId}))`);
+      await tx.delete(levelRoleRewards).where(eq(levelRoleRewards.guildId, guildId));
+      if (rewards.length > 0) {
+        await tx
+          .insert(levelRoleRewards)
+          .values(rewards.map((reward) => ({ guildId, level: reward.level, roleId: reward.roleId })));
+      }
+    });
+  } catch (err) {
+    if (pgErrorCode(err) === PG_UNIQUE_VIOLATION) return { conflict: true };
+    throw err;
+  }
+  return {
+    conflict: false,
+    rewards: [...rewards].sort((a, b) => a.level - b.level).map((reward) => ({ ...reward })),
+  };
 }
 
 /** LevelStore on Postgres. Every call goes through BackendHealth.attempt, so none of them rejects. */

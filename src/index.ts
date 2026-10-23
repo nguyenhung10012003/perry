@@ -1,3 +1,4 @@
+import { startBridge } from "./bridge/bridge-server.js";
 import { BotClient } from "./client/bot-client.js";
 import { registerEvents } from "./client/register-events.js";
 import { commands } from "./commands/index.js";
@@ -20,6 +21,7 @@ const stopHeartbeat = startHeartbeat(client, config.startup.heartbeatFile, logge
 
 for (const command of commands) client.commands.set(command.data.name, command);
 registerEvents(client);
+client.bridge = startBridge(client);
 
 client.on("error", (err) =>
   logger.error({ err: safeError(err) }, "Client error"),
@@ -47,6 +49,11 @@ async function shutdown(exitCode: number): Promise<void> {
     await client.music.shutdown();
   } catch (err) {
     logger.error({ err: safeError(err) }, "Music shutdown failed");
+  }
+  try {
+    await client.bridge?.stop();
+  } catch (err) {
+    logger.error({ err: safeError(err) }, "Bridge shutdown failed");
   }
   try {
     await storage.close();

@@ -4,6 +4,53 @@ import { safeError } from '../../utils/safe-error.js';
 import type { Logger } from '../../utils/logger.js';
 import type { BackendHealth } from '../health.js';
 
+export interface SettingsPublisher {
+  /** Tells bot processes to drop their local copy of a guild's settings. Fire and forget. */
+  publish(guildId: string): void;
+}
+
+/**
+ * Publish-only side of the settings invalidation channel, for processes that never subscribe (the web). Uses the
+ * same `<instanceId>:<guildId>` format, so subscribed bots drop their L1 entry at once (PUBSUB_INVALIDATION=true).
+ */
+export function createSettingsPublisher(client: Redis, health: BackendHealth, channel: string): SettingsPublisher {
+  const instanceId = randomUUID();
+  return {
+    publish(guildId) {
+      void health.attempt(() => client.publish(channel, `${instanceId}:${guildId}`));
+    },
+  };
+}
+
+export interface ChannelSubscription {
+  close(): void;
+}
+
+/**
+ * Subscribes to one pub/sub channel on a duplicated connection (a subscribed connection cannot run other
+ * commands). The duplicate queues its SUBSCRIBE until it is connected and re-subscribes after reconnects.
+ */
+export function createChannelSubscriber(
+  client: Redis,
+  channel: string,
+  logger: Logger,
+  onMessage: (payload: string) => void,
+): ChannelSubscription {
+  const subscriber = client.duplicate({ enableOfflineQueue: true });
+  subscriber.on('error', (err: Error) => logger.debug({ err: safeError(err), channel }, 'Subscriber error'));
+  subscriber.on('message', (received: string, payload: string) => {
+    if (received === channel) onMessage(payload);
+  });
+  subscriber.subscribe(channel).catch((err: unknown) => {
+    logger.warn({ err: safeError(err), channel }, 'Could not subscribe to a Redis channel');
+  });
+  return {
+    close() {
+      subscriber.disconnect();
+    },
+  };
+}
+
 export interface SettingsInvalidation {
   /** Tells other bot processes to drop their local copy of a guild's settings. Fire and forget. */
   publish(guildId: string): void;

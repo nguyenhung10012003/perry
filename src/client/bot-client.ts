@@ -1,4 +1,5 @@
 import { Client, Collection, GatewayIntentBits, Options } from 'discord.js';
+import type { BridgeServer } from '../bridge/bridge-server.js';
 import type { Config } from '../config/env.js';
 import { getMessages, resolveLocale } from '../i18n/index.js';
 import type { Locale, Messages } from '../i18n/index.js';
@@ -18,6 +19,8 @@ export class BotClient extends Client {
   readonly settings: GuildSettingsStore;
   readonly music: MusicService;
   readonly leveling: LevelingService;
+  /** Web dashboard bridge (DP-10 (b)); set by src/index.ts after the events are registered. */
+  bridge: BridgeServer | null = null;
   shuttingDown = false;
 
   constructor(config: Config, logger: Logger, storage: Storage) {

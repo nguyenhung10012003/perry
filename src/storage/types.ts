@@ -196,6 +196,11 @@ export interface Storage {
   readonly keys: Keys;
   /** Removes per-guild data other than settings (snapshot, recently played). Never rejects. */
   purgeGuild(guildId: string): Promise<void>;
+  /**
+   * Subscribes to a Redis pub/sub channel (complete key from `keys`); null with the memory driver. close() closes
+   * every subscription that is still open.
+   */
+  subscribe(channel: string, onMessage: (payload: string) => void): { close(): void } | null;
   /** Stops timers and closes connections within a short cap. Never rejects. */
   close(): Promise<void>;
 }

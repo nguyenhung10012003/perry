@@ -24,8 +24,8 @@ import { recordPlay } from './postgres/history-repo.js';
 import type { PlayHistoryEntry } from './postgres/history-repo.js';
 import { PostgresLevelStore } from './postgres/level-repo.js';
 import { createRedis } from './redis/client.js';
-import { createSettingsInvalidation } from './redis/pubsub.js';
-import type { SettingsInvalidation } from './redis/pubsub.js';
+import { createChannelSubscriber, createSettingsInvalidation } from './redis/pubsub.js';
+import type { ChannelSubscription, SettingsInvalidation } from './redis/pubsub.js';
 import { RedisKeyValueCache } from './redis/redis-cache.js';
 import { RedisCooldownStore, RedisRateLimiter } from './redis/redis-cooldowns.js';
 import { RedisRecentlyPlayedStore } from './redis/redis-recent.js';
@@ -54,6 +54,7 @@ function createMemoryStorage(keys: Keys): Storage {
     purgeGuild(guildId): Promise<void> {
       return recent.clear(guildId);
     },
+    subscribe: () => null,
     close(): Promise<void> {
       return Promise.resolve();
     },
@@ -141,6 +142,7 @@ async function createConfiguredStorage(config: Config, logger: Logger): Promise<
     : noopHistory;
 
   const snapshots = new RedisSnapshotStore(redis.client, redisHealth, keys);
+  const subscriptions = new Set<ChannelSubscription>();
 
   let closed = false;
   return {
@@ -163,11 +165,23 @@ async function createConfiguredStorage(config: Config, logger: Logger): Promise<
         log.warn({ err: safeError(err), guildId }, 'Could not purge guild data');
       }
     },
+    subscribe(channel, onMessage) {
+      const subscription = createChannelSubscriber(redis.client, channel, log, onMessage);
+      const handle = {
+        close(): void {
+          if (!subscriptions.delete(handle)) return;
+          subscription.close();
+        },
+      };
+      subscriptions.add(handle);
+      return handle;
+    },
     async close() {
       if (closed) return;
       closed = true;
       pgHealth.stop();
       invalidation?.close();
+      for (const subscription of [...subscriptions]) subscription.close();
       await Promise.all([
         redis.close(STORAGE_CLOSE_TIMEOUT_MS),
         settleWithin(postgres.pool.end(), STORAGE_CLOSE_TIMEOUT_MS),
