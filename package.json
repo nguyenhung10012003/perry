@@ -15,6 +15,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "deploy-commands": "tsx scripts/deploy-commands.ts",
     "check-commands": "tsx scripts/check-commands.ts",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/db-migrate.ts",
     "dev:lavalink": "docker compose -f docker-compose.dev.yml up -d lavalink",

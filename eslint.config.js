@@ -16,7 +16,11 @@ export default defineConfig(
       },
     },
     rules: {
-      '@typescript-eslint/no-floating-promises': 'error',
+      '@typescript-eslint/no-floating-promises': [
+        'error',
+        // node:test schedules describe/it itself; their returned promises need no handling.
+        { allowForKnownSafeCalls: [{ from: 'package', name: ['describe', 'it', 'test', 'suite'], package: 'node:test' }] },
+      ],
       '@typescript-eslint/no-misused-promises': 'error',
       '@typescript-eslint/consistent-type-imports': 'error',
       'no-unused-vars': 'off',
