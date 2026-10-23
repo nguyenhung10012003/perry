@@ -12,3 +12,4 @@ logs
 .DS_Store
 backups/
 .vscode/
+.worktrees/
