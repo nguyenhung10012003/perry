@@ -77,6 +77,8 @@ export default defineConfig(
   },
   {
     files: ['web/shared/**/*.ts', 'web/components/**/*.{ts,tsx}', 'web/lib/**/*.{ts,tsx}'],
+    // Tests run in Node only (node:test); the client-bundle boundary does not apply to them.
+    ignores: ['**/*.test.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -89,6 +91,7 @@ export default defineConfig(
   },
   {
     files: ['web/shared/**/*.ts'],
+    ignores: ['**/*.test.ts'],
     rules: {
       'no-restricted-imports': [
         'error',

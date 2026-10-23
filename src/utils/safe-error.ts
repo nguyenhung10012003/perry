@@ -3,19 +3,27 @@
  * (web/) shares it with the bot; src/utils/errors.ts re-exports everything for the bot's imports.
  */
 
-const secrets = new Set<string>();
-let includeStacks = false;
+interface Registry {
+  secrets: Set<string>;
+  includeStacks: boolean;
+}
+
+// Kept on globalThis: Next.js bundles the web's instrumentation and each route separately, so this module can be
+// loaded more than once per process, and secrets registered by the web config must be redacted by every copy.
+const REGISTRY_KEY = Symbol.for('perry.safeError.registry');
+const globalStore = globalThis as typeof globalThis & { [REGISTRY_KEY]?: Registry };
+const registry: Registry = (globalStore[REGISTRY_KEY] ??= { secrets: new Set(), includeStacks: false });
 
 /** Registers values (token, passwords) that must never appear in logs or messages. */
 export function registerSecrets(...values: (string | undefined)[]): void {
   for (const value of values) {
-    if (value !== undefined && value.length >= 4) secrets.add(value);
+    if (value !== undefined && value.length >= 4) registry.secrets.add(value);
   }
 }
 
 /** Enables stack traces in safeError() output (only for debug/trace log levels). */
 export function setIncludeStacks(enabled: boolean): void {
-  includeStacks = enabled;
+  registry.includeStacks = enabled;
 }
 
 // Discord bot tokens look like <base64 id>.<timestamp>.<hmac>
@@ -24,7 +32,7 @@ const TOKEN_SHAPE = /[A-Za-z0-9_-]{23,30}\.[A-Za-z0-9_-]{6,7}\.[A-Za-z0-9_-]{27,
 /** Masks registered secrets and Discord-token-shaped strings. */
 export function redact(text: string): string {
   let result = text;
-  for (const secret of secrets) result = result.split(secret).join('[REDACTED]');
+  for (const secret of registry.secrets) result = result.split(secret).join('[REDACTED]');
   return result.replace(TOKEN_SHAPE, '[REDACTED]');
 }
 
@@ -49,7 +57,7 @@ export function safeError(err: unknown): SafeError {
       result.cause = { name: cause.name, message: redact(cause.message) };
       if (typeof causeCode === 'string' || typeof causeCode === 'number') result.cause.code = causeCode;
     }
-    if (includeStacks && err.stack) result.stack = redact(err.stack);
+    if (registry.includeStacks && err.stack) result.stack = redact(err.stack);
     return result;
   }
   return { name: 'NonError', message: redact(String(err)) };
