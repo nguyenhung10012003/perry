@@ -116,6 +116,7 @@ npm run build && npm start
 - A "Now playing" message with buttons (pause, skip, stop, loop, shuffle, queue).
 - Works on many servers at once: queues, settings and timers are all separate per server.
 - DJ role and per-server settings via `/settings`; settings are stored in PostgreSQL so they survive restarts.
+- Moderation (v1.4): `/ban`, `/unban`, `/kick`, `/timeout`, `/warn`, `/warnings`, `/case` and `/purge`, numbered cases per server, a mod-log channel and an optional DM to the user (see [Moderation](#moderation)).
 - Music discovery: `/autoplay` (adds suggested tracks when the queue runs out), `/radio` (plays continuously from a track or a query), `/similar` (browse and pick similar tracks).
 - Playlist and YouTube Mix links are added to the queue in full, starting from the selected video.
 - Restores the playback session after the bot restarts: the bot rejoins the voice channel and continues the queue.
@@ -134,7 +135,7 @@ npm run build && npm start
 1. Go to the [Discord Developer Portal](https://discord.com/developers/applications) and choose **New Application**.
 2. **General Information** tab: copy the **Application ID**. This is the `DISCORD_CLIENT_ID` value.
 3. **Bot** tab: choose **Reset Token** to get the token; this is `DISCORD_TOKEN`. The token is shown only once; do not share it and do not put it in git.
-4. The bot only uses the `Guilds` and `GuildVoiceStates` intents. **Do not enable** any Privileged Gateway Intent (Presence, Server Members, Message Content).
+4. The bot only uses the `Guilds` and `GuildVoiceStates` intents; the v1.4 moderation commands need no other intent. **Do not enable** any Privileged Gateway Intent (Presence, Server Members, Message Content).
 5. To invite the bot to many servers, enable **Public Bot** in the **Bot** tab (it is on by default for new applications; if it is off, only the application owner can invite the bot).
 
 ## Invite link
@@ -142,12 +143,18 @@ npm run build && npm start
 Replace `<DISCORD_CLIENT_ID>` with your Application ID:
 
 ```
-https://discord.com/oauth2/authorize?client_id=<DISCORD_CLIENT_ID>&scope=bot%20applications.commands&permissions=2150648832
+https://discord.com/oauth2/authorize?client_id=<DISCORD_CLIENT_ID>&scope=bot%20applications.commands&permissions=1101662350342
 ```
 
 - Scope: `bot applications.commands`.
-- Permissions (permissions = `2150648832`): View Channels, Send Messages, Embed Links, Connect, Speak, Use Slash Commands.
-- The value `2150648832` was computed with discord.js `PermissionsBitField` (1024 + 2048 + 16384 + 1048576 + 2097152 + 2147483648).
+- Permissions (permissions = `1101662350342`): View Channels, Send Messages, Embed Links, Connect, Speak, Use Slash Commands, and for moderation (v1.4):
+  - Kick Members: `/kick`.
+  - Ban Members: `/ban` and `/unban`.
+  - Timeout Members (`ModerateMembers`): `/timeout`.
+  - Manage Messages: `/purge` deletes other users' messages.
+  - Read Message History: `/purge` reads the recent messages of the channel.
+- The value `1101662350342` was computed with discord.js `PermissionsBitField`: the v1.3 permissions (1024 + 2048 + 16384 + 1048576 + 2097152 + 2147483648 = `2150648832`) plus 2 + 4 + 1099511627776 + 8192 + 65536.
+- Servers that added the bot before v1.4: the bot's role does not get the new permissions by itself. Open the new link again (whether re-authorizing updates the bot's role has not been verified) or grant the permissions to the bot's role by hand. The bot's role must also sit above the members it should moderate (Server Settings > Roles).
 
 ## Configuring `.env`
 
@@ -273,7 +280,7 @@ While it is not enabled, Spotify links are rejected with the message "This music
 
 `STORAGE_DRIVER` selects how data is stored:
 
-- `persistent` (default): PostgreSQL + Redis. In Docker, the bot migrates on startup (`AUTO_MIGRATE=true`, with an advisory lock so parallel starts do not step on each other; it waits for PostgreSQL up to 10 times, 3 seconds apart, then logs one error line and runs in degraded mode). On the host you need `DATABASE_URL`, `REDIS_URL` and `npm run db:migrate` (or `AUTO_MIGRATE=true`). ORM: Drizzle; the `drizzle/` directory contains the generated SQL migrations (`0000_init.sql`, `0001_guild_language.sql`), do not edit them by hand.
+- `persistent` (default): PostgreSQL + Redis. In Docker, the bot migrates on startup (`AUTO_MIGRATE=true`, with an advisory lock so parallel starts do not step on each other; it waits for PostgreSQL up to 10 times, 3 seconds apart, then logs one error line and runs in degraded mode). On the host you need `DATABASE_URL`, `REDIS_URL` and `npm run db:migrate` (or `AUTO_MIGRATE=true`). ORM: Drizzle; the `drizzle/` directory contains the generated SQL migrations (`0000_init.sql`, `0001_guild_language.sql`, `0002_moderation.sql`), do not edit them by hand.
 - `memory`: v1 behavior, everything lives inside the bot process. No settings are stored, there are no snapshots and no session restore. Only for running on the host; the Docker stack always uses `persistent`. With `memory`, the slash command hash is also in-process, so the commands are re-registered on every start.
 
 Quick start on the host (dev infrastructure, see the section above):
@@ -375,7 +382,7 @@ npm run build && npm start
 npm run dev
 ```
 
-Static checks: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check-commands`.
+Static checks: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check-commands`. Unit tests (v1.4): `npm test` runs the `src/**/*.test.ts` files with Node's built-in `node:test` through `tsx`; they need neither Docker nor network, and `npm run build` leaves them out of `dist/`.
 
 ## Command list
 
@@ -409,7 +416,15 @@ The table below comes from the `npm run check-commands` output. All commands onl
 | `/autoplay`   | Music    | 2 (`state`, `mode`)                                           | 3s       | Turn autoplay of suggested tracks on or off when the queue ends  |
 | `/radio`      | Music    | 1 (`query`)                                                   | 10s      | Start a radio: keeps adding related tracks from a track or query |
 | `/similar`    | Music    | 0                                                             | 10s      | Browse and add tracks similar to the current track               |
-| `/settings`   | Settings | 4 subcommands (`view`, `dj-role`, `default-volume`, `language`) | 3s     | Bot settings for this server                                     |
+| `/ban`        | Moderation | 3 (`user`, `reason`, `delete_messages`)                     | 3s       | Ban a user from this server                                      |
+| `/unban`      | Moderation | 2 (`user`, `reason`)                                        | 3s       | Lift the ban of a user                                           |
+| `/kick`       | Moderation | 2 (`user`, `reason`)                                        | 3s       | Kick a member from this server                                   |
+| `/timeout`    | Moderation | 2 subcommands (`set`, `remove`)                             | 3s       | Time out a member or remove a timeout                            |
+| `/warn`       | Moderation | 2 (`user`, `reason`)                                        | 3s       | Warn a member                                                    |
+| `/warnings`   | Moderation | 2 subcommands (`list`, `clear`)                             | 3s       | Show or delete the warnings of a user                            |
+| `/case`       | Moderation | 3 subcommands (`view`, `reason`, `delete`)                  | 2s       | Show or edit moderation cases                                    |
+| `/purge`      | Moderation | 2 (`amount`, `user`)                                        | 5s       | Delete recent messages in this channel                           |
+| `/settings`   | Settings | 6 subcommands (`view`, `dj-role`, `default-volume`, `language`, `mod-log`, `mod-dm`) | 3s | Bot settings for this server                         |
 
 Notes:
 
@@ -417,6 +432,7 @@ Notes:
 - `/play` accepts a link or a query; `source` picks `youtube`, `youtubemusic` or `soundcloud` for queries; `next` inserts the track at the front of the queue. A query only plays the best result; playlists and Mixes are added in full (at most 300 tracks per request, duplicates skipped), with a queue limit of 1000 tracks.
 - `/autoplay` takes `state` (`on`/`off`) and `mode` (`related`/`seed`); `/radio` takes a link or a query. `/autoplay` needs DJ permission when a DJ role is set, `/radio` and `/similar` do not. `/autoplay` only changes a setting, so it works when you are not in a voice channel (no player or channel permission needed); adding tracks automatically still requires someone in the voice channel.
 - `/seek` accepts `mm:ss`, `h:mm:ss` or a number of seconds. `/volume` accepts 0-150.
+- The moderation commands and their permissions are described in [Moderation](#moderation).
 
 ## DJ role and `/settings`
 
@@ -424,12 +440,42 @@ Notes:
 - `/settings dj-role [role]`: set the DJ role; leave `role` empty to clear it.
 - `/settings default-volume level`: default volume for new sessions (0-150).
 - `/settings language locale` (v1.3): the bot language in this server: `English`, `Tiếng Việt` or `Bot default` (clears the choice and falls back to `DEFAULT_LOCALE`). The confirmation reply uses the new language and the "Now playing" message is re-rendered.
-- `/settings view` also shows the autoplay state and mode (set with `/autoplay`) and the language row (the chosen language's name, or `Default (<name of the DEFAULT_LOCALE language>)`).
+- `/settings mod-log [channel]` (v1.4): the channel that receives the moderation log (a text or announcement channel); leave `channel` empty to turn the mod log off. The bot refuses a channel where it cannot post embeds (View Channel, Send Messages, Embed Links).
+- `/settings mod-dm enabled` (v1.4): whether the user gets a DM on a ban, kick, timeout or warning (on by default).
+- `/settings view` also shows the autoplay state and mode (set with `/autoplay`), the language row (the chosen language's name, or `Default (<name of the DEFAULT_LOCALE language>)`), the mod-log channel and the DM setting.
 - Only members with the **Manage Server** permission can use `/settings`.
 - While no DJ role is set, everyone in the voice channel can use the control commands.
 - Once a DJ role is set, the control commands (pause, stop, volume, loop, ...) are reserved for members with the DJ role or the Manage Server permission. Exceptions: someone listening alone with the bot; the member who added a track may `/skip`, `/previous`, `/remove`, `/seek`, `/forward`, `/rewind` on their own track.
 - If the DJ role is deleted from the server, the bot treats it as not set and clears the setting, so users are not locked out of the control commands.
 - Settings are stored in PostgreSQL with `STORAGE_DRIVER=persistent`; with `memory` they are lost when the bot restarts.
+- Deleting the mod-log channel clears `/settings mod-log`, and deleting the DJ role clears the DJ role setting. Each deletion is applied with one database update, so deleting a whole category at once cannot bring a removed id back.
+
+## Moderation
+
+v1.4 adds moderation commands. All their replies are only visible to the moderator; the public record is the mod-log channel.
+
+| Command                                                                 | Who can use it                                                    | What the bot needs                                                  |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `/ban user [reason] [delete_messages]`                                  | Ban Members                                                       | Ban Members                                                         |
+| `/unban user [reason]` (`user` is an ID or a mention)                   | Ban Members                                                       | Ban Members                                                         |
+| `/kick user [reason]`                                                   | Kick Members                                                      | Kick Members                                                        |
+| `/timeout set user duration [reason]`, `/timeout remove user [reason]` | Timeout Members                                                   | Timeout Members                                                     |
+| `/warn user reason`                                                     | Timeout Members                                                   | nothing                                                             |
+| `/warnings list user`, `/case view number`, `/case reason number reason` | Timeout Members                                                 | nothing                                                             |
+| `/warnings clear user`, `/case delete number`                           | listed for Timeout Members, but running them needs Manage Server | nothing                                                             |
+| `/purge amount [user]`                                                  | Manage Messages                                                   | View Channel, Read Message History and Manage Messages in the channel |
+
+- Permissions: the "Who can use it" column is the command's default member permission. Server admins can change it in Server Settings > Integrations, so the bot checks the permission again when the command runs. Before acting, the bot checks its own permissions and lists the missing ones.
+- Role hierarchy: nobody can act on themselves, the bot or the server owner. The moderator (unless they own the server) and the bot both need a highest role strictly above the member's highest role. Members with Administrator cannot be timed out. `/kick`, `/timeout` and `/warn` only work on current members; `/ban` also accepts a user who is not in the server. A user who is already banned is not banned twice.
+- Cases: every ban, unban, kick, timeout, timeout removal and warning becomes a case with a number per server (#1, #2, ...). A case stores the action, the user, the moderator, the reason (at most 512 characters), the timeout duration, whether the DM was delivered and the mod-log message. Numbers are never reused, also after `/case delete`, which removes the record but leaves the mod-log message. `/warnings list` shows a user's warnings, 10 per page, also for users who left the server.
+- Mod log: with `/settings mod-log` the bot posts one embed per case and per purge in that channel. `/case reason` changes the reason and edits the logged embed.
+- DM: while `/settings mod-dm` is on (the default) the user gets a DM in the server's language: before a ban or kick (afterwards the bot may share no server with them) and after a timeout or warning. There is no DM on unban or timeout removal. A failed DM never blocks the action, and the reply says the DM could not be delivered. If a ban or kick fails after its DM was sent, the error reply says the user was already notified.
+- Durations: `s`, `m`, `h`, `d` and `w`, combinable (`10m`, `1h30m`, `7d`), from 1 second to 28 days.
+- `/ban delete_messages`: delete none (default) or the last 1h, 6h, 12h, 24h, 3d or 7d of the user's messages.
+- `/purge`: looks at the last 100 messages of the current channel or thread and deletes up to `amount` (1-100) of them, optionally only from one user. Pinned messages and messages older than 14 days are skipped. A purge writes a mod-log entry but no case.
+- Audit log: the bot sets the reason in Discord's audit log to `<moderator>: <reason>`.
+- PostgreSQL unavailable: `/ban`, `/unban`, `/kick` and `/timeout` still run and the reply says the case was not recorded; `/warn`, `/warnings` and `/case` answer that the records are temporarily unavailable. With `STORAGE_DRIVER=memory`, cases are only kept until the bot restarts.
+- The bot does not filter message content. Managing Discord's own AutoMod rules is planned for the web dashboard.
 
 ## Language
 
@@ -467,6 +513,7 @@ Notes:
 - **Multiple processes**: cooldowns and rate limits use Redis so they can be shared, but running several processes has not been verified.
 - **24/7 mode**: exists in the code but has no command to enable it yet; off by default.
 - **One Lavalink node**: only one node is used, with no load balancing across nodes.
+- **Moderation**: only actions taken through the bot's commands are recorded; bans, kicks and timeouts done in Discord's own menus create no case and no mod-log entry. `/purge` only looks at the last 100 messages and cannot delete messages older than 14 days. There are no temporary bans and no automatic punishment after a number of warnings.
 - Bandcamp and Twitch only accept links (no search). Stage channels are not supported yet.
 - `bcsearch:` is not a Lavalink feature, so there is no Bandcamp search.
 
@@ -523,7 +570,17 @@ Verified in v1.2 (Docker 27.5.1, Compose 2.32.4, macOS arm64, fake Discord token
 
 Verified in v1.3 (no real Discord token; throwaway PostgreSQL 18.6 / Redis 8.8.3 containers and a copy of the build): `npm run typecheck`, `lint`, `build` and `check-commands` pass, and `check-commands` now fails when any command, subcommand or option lacks a Vietnamese description localization or exceeds 100 characters (tested by removing one); the compiler rejects a Vietnamese catalog with a missing key, an extra key or a wrong parameter type; migration `0001_guild_language` re-runs cleanly (2 rows in `drizzle.__drizzle_migrations`), its check constraint rejects values other than `en`/`vi`, and a database with only `0000_init` makes the bot log `Database schema is missing or outdated`; the guild language round-trips through the in-process cache, Redis and PostgreSQL (including reset to the default and v1.2 Redis cache entries without a language field); `DEFAULT_LOCALE` unset, empty, `vi` and an invalid value (exit 1 without printing the value), and Docker Compose passing it to the bot; command names are unchanged apart from the new `/settings language` subcommand; every command/subcommand/option carries a Vietnamese localization, `/settings language` choices and Manage Server default permission, the locale resolution order, and the "Now playing" and queue embeds rendered in both languages with a fake player; an offline start with `DEFAULT_LOCALE=vi`, a fake token and auto-migrate (migrations applied, Redis and PostgreSQL connected, exactly one `Login failed` line, clean shutdown); scripts, Makefile, compose files, workflows and `.env.example` contain no Vietnamese text, shellcheck (v0.10.0) is clean, every script's `--help` and `make help` print English, `setup.sh` appends `DEFAULT_LOCALE` to an existing config file, `doctor.sh` prints an English report and the compose guards print English messages.
 
-Suggested quick test on a real server: `/play never gonna give you up`, `/pause`, `/resume`, `/skip`, `/queue` and the buttons on the "Now playing" message; then `/settings language` with each choice.
+Not verified in v1.4 (moderation):
+
+- Every moderation action against real Discord members: the role hierarchy as Discord enforces it, DMs, audit-log reasons, bulk delete with `/purge`.
+- How the mod-log and case embeds render in a real Discord client; `/settings mod-log` with a real channel.
+- Whether opening the new invite link again adds the new permissions to the bot's role in a server that already has the bot.
+- `/warnings list` page buttons on a real message.
+- Registering the 35 commands with Discord, and upgrading a real running stack to v1.4 (migration `0002` on real data).
+
+Verified in v1.4 (moderation; no real Discord token, throwaway PostgreSQL 18.6 / Redis 8.8.3 containers): `npm run typecheck`, `lint`, `build`, `check-commands` (35 commands) and `npm test` pass; the 26 existing commands other than `/settings` serialize exactly as before and `/settings` only gains `mod-log` and `mod-dm`; every new command has its default member permission, Vietnamese localizations and option limits; migration `0002_moderation` applies and re-runs cleanly (3 rows in `drizzle.__drizzle_migrations`) and its check constraints reject unknown actions; 20 parallel case creations in one server get the numbers 1 to 20 and a deleted number is not reused; with PostgreSQL stopped, creating a case resolves at once without an error and the settings store queues channel and role removals and replays them as the same database update after recovery; a database with only `0000` and `0001` makes the bot log `Database schema is missing or outdated`; the moderation pipeline (order of checks, DM before a ban or kick and after a timeout or warning, error mapping, notes) with stub Discord objects; an offline start with a fake token (migrations applied, Redis and PostgreSQL connected, exactly one `Login failed` line, no secrets in the log).
+
+Suggested quick test on a real server: `/play never gonna give you up`, `/pause`, `/resume`, `/skip`, `/queue` and the buttons on the "Now playing" message; then `/settings language` with each choice; then `/settings mod-log`, `/warn` and `/case view` on a test member.
 
 ## Legal notice
 
@@ -558,8 +615,9 @@ src/
   index.ts            Entry point, login and safe shutdown
   config/             Reading and validating environment variables, constants
   client/             BotClient and event registration
-  commands/           Commands by group: general/, music/, settings/ and index.ts (explicit list)
-  events/             Discord events (ready, guildDelete, guildRoleDelete, interaction, voice state)
+  commands/           Commands by group: general/, music/, moderation/, settings/ and index.ts (explicit list)
+  events/             Discord events (ready, guildDelete, guildRoleDelete, channelDelete, interaction, voice state)
+  moderation/         Moderation: target checks, durations, limits, the action pipeline, mod log, permission helpers
   interactions/       Command, button and autocomplete handling, cooldowns
   music/              Lavalink, queue, guards, controls, search, lyrics
     discovery/        Suggestion engine, autoplay, filters and providers (providers/)
@@ -587,6 +645,7 @@ backups/              PostgreSQL backups created by backup.sh (excluded by .giti
 drizzle/              Generated SQL migrations (kept in git, do not edit by hand)
   0000_init.sql       Initial schema
   0001_guild_language.sql  v1.3: guild_settings.language column + check constraint
+  0002_moderation.sql      v1.4: mod_cases, mod_case_counters, guild_settings.mod_log_channel_id and mod_dm_target
 drizzle.config.ts     drizzle-kit configuration
 lavalink/             application.yml (the plugins/ directory only holds .gitkeep; plugins live in a Docker volume)
 ```

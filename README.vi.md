@@ -116,6 +116,7 @@ npm run build && npm start
 - Thông báo "Đang phát" có các nút bấm (tạm dừng, bỏ qua, dừng, lặp, xáo trộn, hàng đợi).
 - Hoạt động trên nhiều máy chủ cùng lúc: hàng đợi, cài đặt và bộ hẹn giờ đều tách riêng theo từng máy chủ.
 - Vai trò DJ và cài đặt theo máy chủ qua `/settings`; cài đặt được lưu trong PostgreSQL nên không mất khi khởi động lại.
+- Kiểm duyệt (v1.4): `/ban`, `/unban`, `/kick`, `/timeout`, `/warn`, `/warnings`, `/case` và `/purge`, hồ sơ vụ việc đánh số theo máy chủ, kênh nhật ký kiểm duyệt và tin nhắn riêng (tùy chọn) gửi cho người bị xử lý (xem [Kiểm duyệt](#kiểm-duyệt)).
 - Tự khám phá nhạc: `/autoplay` (tự thêm bài gợi ý khi hết hàng đợi), `/radio` (phát liên tục từ một bài hoặc từ khóa), `/similar` (xem và chọn bài tương tự).
 - Liên kết playlist hoặc YouTube Mix được thêm toàn bộ vào hàng đợi, bắt đầu từ video đã chọn.
 - Khôi phục phiên phát sau khi bot khởi động lại: bot vào lại kênh thoại và phát tiếp hàng đợi.
@@ -134,7 +135,7 @@ npm run build && npm start
 1. Vào [Discord Developer Portal](https://discord.com/developers/applications), chọn **New Application**.
 2. Tab **General Information**: sao chép **Application ID**. Đây là giá trị `DISCORD_CLIENT_ID`.
 3. Tab **Bot**: chọn **Reset Token** để lấy token, đây là `DISCORD_TOKEN`. Token chỉ hiện một lần, không chia sẻ và không đưa vào git.
-4. Bot chỉ dùng intents `Guilds` và `GuildVoiceStates`. **Không bật** bất kỳ Privileged Gateway Intent nào (Presence, Server Members, Message Content).
+4. Bot chỉ dùng intents `Guilds` và `GuildVoiceStates`; các lệnh kiểm duyệt của v1.4 không cần thêm intent nào. **Không bật** bất kỳ Privileged Gateway Intent nào (Presence, Server Members, Message Content).
 5. Để mời bot vào nhiều máy chủ, bật **Public Bot** trong tab **Bot** (mục này đã được bật mặc định với ứng dụng mới; nếu tắt, chỉ chủ ứng dụng mới mời được bot).
 
 ## Liên kết mời bot
@@ -142,12 +143,18 @@ npm run build && npm start
 Thay `<DISCORD_CLIENT_ID>` bằng Application ID của bạn:
 
 ```
-https://discord.com/oauth2/authorize?client_id=<DISCORD_CLIENT_ID>&scope=bot%20applications.commands&permissions=2150648832
+https://discord.com/oauth2/authorize?client_id=<DISCORD_CLIENT_ID>&scope=bot%20applications.commands&permissions=1101662350342
 ```
 
 - Scope: `bot applications.commands`.
-- Quyền (permissions = `2150648832`): View Channels, Send Messages, Embed Links, Connect, Speak, Use Slash Commands.
-- Giá trị `2150648832` được tính bằng `PermissionsBitField` của discord.js (1024 + 2048 + 16384 + 1048576 + 2097152 + 2147483648).
+- Quyền (permissions = `1101662350342`): View Channels, Send Messages, Embed Links, Connect, Speak, Use Slash Commands, và cho kiểm duyệt (v1.4):
+  - Kick Members: `/kick`.
+  - Ban Members: `/ban` và `/unban`.
+  - Timeout Members (`ModerateMembers`): `/timeout`.
+  - Manage Messages: `/purge` xóa tin nhắn của người khác.
+  - Read Message History: `/purge` đọc các tin nhắn gần đây của kênh.
+- Giá trị `1101662350342` được tính bằng `PermissionsBitField` của discord.js: các quyền của v1.3 (1024 + 2048 + 16384 + 1048576 + 2097152 + 2147483648 = `2150648832`) cộng thêm 2 + 4 + 1099511627776 + 8192 + 65536.
+- Máy chủ đã thêm bot trước v1.4: vai trò của bot không tự nhận quyền mới. Mở lại liên kết mới (chưa kiểm chứng việc cấp quyền lại có cập nhật vai trò của bot hay không) hoặc tự cấp các quyền đó cho vai trò của bot. Vai trò của bot cũng phải nằm trên các thành viên mà bot cần xử lý (Cài đặt máy chủ > Vai trò).
 
 ## Cấu hình `.env`
 
@@ -374,7 +381,7 @@ npm run build && npm start
 npm run dev
 ```
 
-Kiểm tra tĩnh: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check-commands`.
+Kiểm tra tĩnh: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check-commands`. Kiểm thử đơn vị (v1.4): `npm test` chạy các tệp `src/**/*.test.ts` bằng `node:test` có sẵn của Node thông qua `tsx`; chúng không cần Docker hay mạng, và `npm run build` không đưa chúng vào `dist/`.
 
 ## Danh sách lệnh
 
@@ -408,7 +415,15 @@ Bảng dưới đây lấy từ kết quả `npm run check-commands`. Tất cả
 | `/autoplay`   | Âm nhạc | 2 (`state`, `mode`)                              | 3s       | Bật hoặc tắt tự động phát bài gợi ý khi hết hàng đợi      |
 | `/radio`      | Âm nhạc | 1 (`query`)                                      | 10s      | Phát radio: tự thêm bài liên quan từ một bài hoặc từ khóa |
 | `/similar`    | Âm nhạc | 0                                                | 10s      | Xem và thêm các bài tương tự với bài đang phát            |
-| `/settings`   | Cài đặt | 4 lệnh con (`view`, `dj-role`, `default-volume`, `language`) | 3s       | Cài đặt bot cho máy chủ này                               |
+| `/ban`        | Kiểm duyệt | 3 (`user`, `reason`, `delete_messages`)       | 3s       | Cấm một người dùng khỏi máy chủ này                       |
+| `/unban`      | Kiểm duyệt | 2 (`user`, `reason`)                          | 3s       | Gỡ lệnh cấm của một người dùng                            |
+| `/kick`       | Kiểm duyệt | 2 (`user`, `reason`)                          | 3s       | Đuổi một thành viên khỏi máy chủ này                      |
+| `/timeout`    | Kiểm duyệt | 2 lệnh con (`set`, `remove`)                  | 3s       | Hạn chế một thành viên hoặc gỡ hạn chế                    |
+| `/warn`       | Kiểm duyệt | 2 (`user`, `reason`)                          | 3s       | Cảnh cáo một thành viên                                   |
+| `/warnings`   | Kiểm duyệt | 2 lệnh con (`list`, `clear`)                  | 3s       | Xem hoặc xóa các cảnh cáo của một người dùng              |
+| `/case`       | Kiểm duyệt | 3 lệnh con (`view`, `reason`, `delete`)       | 2s       | Xem hoặc sửa các vụ kiểm duyệt                            |
+| `/purge`      | Kiểm duyệt | 2 (`amount`, `user`)                          | 5s       | Xóa các tin nhắn gần đây trong kênh này                   |
+| `/settings`   | Cài đặt | 6 lệnh con (`view`, `dj-role`, `default-volume`, `language`, `mod-log`, `mod-dm`) | 3s | Cài đặt bot cho máy chủ này                 |
 
 Ghi chú:
 
@@ -416,6 +431,7 @@ Ghi chú:
 - `/play` nhận liên kết hoặc từ khóa; `source` chọn `youtube`, `youtubemusic` hoặc `soundcloud` cho từ khóa; `next` chèn bài lên đầu hàng đợi. Từ khóa chỉ phát kết quả tốt nhất; playlist và Mix được thêm toàn bộ (tối đa 300 bài mỗi lần, bài trùng bị bỏ qua), hàng đợi tối đa 1000 bài.
 - `/autoplay` nhận `state` (`on`/`off`) và `mode` (`related`/`seed`); `/radio` nhận liên kết hoặc từ khóa. `/autoplay` cần quyền DJ khi đã đặt vai trò DJ, `/radio` và `/similar` thì không. `/autoplay` chỉ đổi cài đặt nên dùng được khi bạn không ở trong kênh thoại (không cần player hay quyền vào kênh); việc tự thêm bài vẫn cần có người trong kênh thoại.
 - `/seek` nhận `mm:ss`, `h:mm:ss` hoặc số giây. `/volume` nhận 0-150.
+- Các lệnh kiểm duyệt và quyền của chúng được mô tả ở [Kiểm duyệt](#kiểm-duyệt).
 
 ## Vai trò DJ và `/settings`
 
@@ -423,12 +439,42 @@ Ghi chú:
 - `/settings dj-role [role]`: đặt vai trò DJ; bỏ trống `role` để xóa.
 - `/settings default-volume level`: âm lượng mặc định cho phiên phát mới (0-150).
 - `/settings language locale` (v1.3): ngôn ngữ của bot trong máy chủ này: `English`, `Tiếng Việt` hoặc `Mặc định của bot` (xóa lựa chọn, quay về `DEFAULT_LOCALE`). Câu trả lời xác nhận dùng ngôn ngữ mới và tin nhắn "Đang phát" được vẽ lại.
-- `/settings view` cũng hiển thị trạng thái và chế độ autoplay (đặt bằng `/autoplay`) và ngôn ngữ (tên ngôn ngữ đã chọn, hoặc `Mặc định (<ngôn ngữ của DEFAULT_LOCALE>)`).
+- `/settings mod-log [channel]` (v1.4): kênh nhận nhật ký kiểm duyệt (kênh văn bản hoặc kênh thông báo); bỏ trống `channel` để tắt nhật ký. Bot từ chối kênh mà nó không gửi được embed (Xem kênh, Gửi tin nhắn, Nhúng liên kết).
+- `/settings mod-dm enabled` (v1.4): có gửi tin nhắn riêng cho người dùng khi bị cấm, đuổi, hạn chế hoặc cảnh cáo hay không (mặc định bật).
+- `/settings view` cũng hiển thị trạng thái và chế độ autoplay (đặt bằng `/autoplay`), ngôn ngữ (tên ngôn ngữ đã chọn, hoặc `Mặc định (<ngôn ngữ của DEFAULT_LOCALE>)`), kênh nhật ký kiểm duyệt và cài đặt tin nhắn riêng.
 - Chỉ người có quyền **Manage Server** mới dùng được `/settings`.
 - Khi chưa đặt vai trò DJ, mọi người trong kênh thoại đều dùng được các lệnh điều khiển.
 - Khi đã đặt vai trò DJ, các lệnh điều khiển (tạm dừng, dừng, âm lượng, lặp, ...) chỉ dành cho người có vai trò DJ hoặc quyền Manage Server. Ngoại lệ: người đang nghe một mình cùng bot; người đã thêm bài được phép `/skip`, `/previous`, `/remove`, `/seek`, `/forward`, `/rewind` trên bài của chính mình.
 - Nếu vai trò DJ bị xóa khỏi máy chủ, bot coi như chưa đặt vai trò DJ và tự xóa thiết lập đó, nên người dùng không bị khóa khỏi các lệnh điều khiển.
 - Cài đặt được lưu trong PostgreSQL khi `STORAGE_DRIVER=persistent`; với `memory` chúng mất khi bot khởi động lại.
+- Xóa kênh nhật ký kiểm duyệt sẽ xóa cài đặt `/settings mod-log`, xóa vai trò DJ sẽ xóa cài đặt vai trò DJ. Mỗi lần xóa được áp dụng bằng một câu lệnh cập nhật cơ sở dữ liệu, nên xóa cả một danh mục cùng lúc không làm một ID đã gỡ quay lại.
+
+## Kiểm duyệt
+
+v1.4 thêm các lệnh kiểm duyệt. Mọi câu trả lời của chúng chỉ người kiểm duyệt nhìn thấy; bản ghi công khai là kênh nhật ký kiểm duyệt.
+
+| Lệnh                                                                    | Ai dùng được                                                         | Bot cần quyền                                                       |
+| ----------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `/ban user [reason] [delete_messages]`                                  | Ban Members                                                          | Ban Members                                                         |
+| `/unban user [reason]` (`user` là ID hoặc lượt nhắc)                    | Ban Members                                                          | Ban Members                                                         |
+| `/kick user [reason]`                                                   | Kick Members                                                         | Kick Members                                                        |
+| `/timeout set user duration [reason]`, `/timeout remove user [reason]` | Timeout Members                                                      | Timeout Members                                                     |
+| `/warn user reason`                                                     | Timeout Members                                                      | không cần                                                           |
+| `/warnings list user`, `/case view number`, `/case reason number reason` | Timeout Members                                                    | không cần                                                           |
+| `/warnings clear user`, `/case delete number`                           | hiện với Timeout Members, nhưng muốn chạy phải có Manage Server      | không cần                                                           |
+| `/purge amount [user]`                                                  | Manage Messages                                                      | View Channel, Read Message History và Manage Messages trong kênh    |
+
+- Quyền: cột "Ai dùng được" là quyền thành viên mặc định của lệnh. Quản trị viên máy chủ có thể đổi trong Cài đặt máy chủ > Tích hợp, nên bot kiểm tra lại quyền khi lệnh chạy. Trước khi xử lý, bot kiểm tra quyền của chính nó và liệt kê các quyền còn thiếu.
+- Thứ bậc vai trò: không ai xử lý được chính mình, bot hay chủ máy chủ. Người kiểm duyệt (trừ khi là chủ máy chủ) và bot đều cần vai trò cao nhất cao hơn hẳn vai trò cao nhất của thành viên đó. Không thể hạn chế thành viên có quyền Administrator. `/kick`, `/timeout` và `/warn` chỉ dùng được với thành viên đang ở trong máy chủ; `/ban` nhận cả người dùng không ở trong máy chủ. Người dùng đã bị cấm thì không bị cấm lần hai.
+- Hồ sơ vụ việc: mỗi lần cấm, gỡ cấm, đuổi, hạn chế, gỡ hạn chế và cảnh cáo trở thành một vụ có số riêng theo máy chủ (#1, #2, ...). Một vụ lưu hành động, người dùng, người kiểm duyệt, lý do (tối đa 512 ký tự), thời lượng hạn chế, tin nhắn riêng có tới nơi hay không và tin nhắn trong nhật ký kiểm duyệt. Số vụ không bao giờ được dùng lại, kể cả sau `/case delete`; lệnh này xóa bản ghi nhưng giữ tin nhắn trong nhật ký. `/warnings list` hiển thị cảnh cáo của một người dùng, 10 dòng mỗi trang, kể cả với người đã rời máy chủ.
+- Nhật ký kiểm duyệt: khi đã đặt `/settings mod-log`, bot gửi một embed cho mỗi vụ và mỗi lần dọn tin nhắn vào kênh đó. `/case reason` đổi lý do và sửa lại embed đã ghi.
+- Tin nhắn riêng: khi `/settings mod-dm` bật (mặc định), người dùng nhận tin nhắn riêng bằng ngôn ngữ của máy chủ: trước khi bị cấm hoặc đuổi (sau đó bot có thể không còn chung máy chủ nào với họ) và sau khi bị hạn chế hoặc cảnh cáo. Không gửi khi gỡ cấm hoặc gỡ hạn chế. Tin nhắn riêng gửi lỗi không bao giờ chặn hành động, và câu trả lời báo là không gửi được. Nếu lệnh cấm hoặc đuổi thất bại sau khi tin nhắn riêng đã gửi, câu báo lỗi cho biết người dùng đã được thông báo.
+- Thời lượng: `s`, `m`, `h`, `d` và `w`, ghép được (`10m`, `1h30m`, `7d`), từ 1 giây đến 28 ngày.
+- `/ban delete_messages`: không xóa (mặc định) hoặc xóa tin nhắn của người dùng trong 1h, 6h, 12h, 24h, 3d hoặc 7d gần nhất.
+- `/purge`: xét 100 tin nhắn gần nhất của kênh hoặc chủ đề (thread) hiện tại và xóa tối đa `amount` (1-100) tin, có thể chỉ của một người dùng. Tin nhắn đã ghim và tin cũ hơn 14 ngày được bỏ qua. Mỗi lần dọn ghi một mục vào nhật ký kiểm duyệt nhưng không tạo vụ.
+- Nhật ký kiểm tra (audit log): bot đặt lý do trong nhật ký kiểm tra của Discord là `<người kiểm duyệt>: <lý do>`.
+- Khi PostgreSQL không khả dụng: `/ban`, `/unban`, `/kick` và `/timeout` vẫn chạy và câu trả lời báo vụ chưa được lưu; `/warn`, `/warnings` và `/case` báo hồ sơ tạm thời không khả dụng. Với `STORAGE_DRIVER=memory`, hồ sơ chỉ giữ tới khi bot khởi động lại.
+- Bot không lọc nội dung tin nhắn. Việc quản lý quy tắc AutoMod của chính Discord được lên kế hoạch cho web dashboard.
 
 ## Ngôn ngữ
 
@@ -465,6 +511,7 @@ Ghi chú:
 - **Nhiều tiến trình**: cooldown và giới hạn tần suất dùng Redis nên dùng chung được, nhưng chưa kiểm chứng việc chạy nhiều tiến trình.
 - **Chế độ 24/7**: có trong mã nhưng chưa có lệnh bật; mặc định tắt.
 - **Một node Lavalink**: chỉ dùng một node, chưa cân bằng tải nhiều node.
+- **Kiểm duyệt**: chỉ hành động làm qua lệnh của bot mới được ghi lại; cấm, đuổi hay hạn chế bằng menu của chính Discord không tạo vụ và không ghi nhật ký kiểm duyệt. `/purge` chỉ xét 100 tin nhắn gần nhất và không xóa được tin cũ hơn 14 ngày. Không có cấm tạm thời và không tự xử phạt sau một số lần cảnh cáo.
 - Bandcamp và Twitch chỉ nhận liên kết (không có tìm kiếm). Kênh Stage chưa được hỗ trợ.
 - `bcsearch:` không phải tính năng của Lavalink nên không có tìm kiếm Bandcamp.
 
@@ -521,7 +568,17 @@ Chưa được kiểm chứng ở v1.3 (quốc tế hóa):
 
 Đã kiểm chứng ở v1.3 (không có token Discord thật; container PostgreSQL 18.6 / Redis 8.8.3 dùng một lần và một bản sao của build): `npm run typecheck`, `lint`, `build` và `check-commands` đạt, và `check-commands` giờ báo lỗi khi lệnh, lệnh con hay tùy chọn thiếu mô tả tiếng Việt hoặc dài quá 100 ký tự (đã thử bằng cách bỏ một mô tả); trình biên dịch từ chối danh mục tiếng Việt thiếu khóa, thừa khóa hoặc sai kiểu tham số; migration `0001_guild_language` chạy lặp lại không lỗi (2 dòng trong `drizzle.__drizzle_migrations`), ràng buộc kiểm tra từ chối giá trị khác `en`/`vi`, và cơ sở dữ liệu chỉ có `0000_init` làm bot ghi log `Database schema is missing or outdated`; ngôn ngữ của máy chủ đi qua cache nội bộ, Redis và PostgreSQL (kể cả đặt lại về mặc định và mục cache Redis của v1.2 không có trường ngôn ngữ); `DEFAULT_LOCALE` không đặt, rỗng, `vi` và giá trị sai (thoát mã 1, không in giá trị), Docker Compose truyền biến này cho bot; tên lệnh không đổi ngoài lệnh con mới `/settings language`; mọi lệnh/lệnh con/tùy chọn có bản địa hóa tiếng Việt, lựa chọn của `/settings language` và quyền mặc định Manage Server, thứ tự chọn ngôn ngữ, embed "Đang phát" và hàng đợi hiển thị đúng cả hai ngôn ngữ với player giả; khởi động offline với `DEFAULT_LOCALE=vi`, token giả và tự migrate (migration áp dụng, kết nối Redis và PostgreSQL, đúng một dòng `Login failed`, tắt êm); script, Makefile, tệp compose, workflow và `.env.example` không còn chữ tiếng Việt, shellcheck (v0.10.0) sạch, `--help` của mọi script và `make help` in tiếng Anh, `setup.sh` thêm `DEFAULT_LOCALE` vào tệp cấu hình hiện có, `doctor.sh` in báo cáo tiếng Anh và kiểm tra biến của compose in thông báo tiếng Anh.
 
-Khuyến nghị thử nhanh trên một máy chủ thật: `/play never gonna give you up`, `/pause`, `/resume`, `/skip`, `/queue` và các nút trên tin nhắn "Đang phát".
+Chưa được kiểm chứng ở v1.4 (kiểm duyệt):
+
+- Mọi hành động kiểm duyệt với thành viên Discord thật: thứ bậc vai trò do Discord áp dụng, tin nhắn riêng, lý do trong nhật ký kiểm tra, xóa hàng loạt bằng `/purge`.
+- Cách embed của nhật ký kiểm duyệt và của vụ hiển thị trong ứng dụng Discord thật; `/settings mod-log` với một kênh thật.
+- Việc mở lại liên kết mời mới có thêm quyền mới cho vai trò của bot ở máy chủ đã có bot hay không.
+- Nút chuyển trang của `/warnings list` trên tin nhắn thật.
+- Đăng ký 35 lệnh lên Discord, và nâng cấp một stack đang chạy thật lên v1.4 (migration `0002` trên dữ liệu thật).
+
+Đã kiểm chứng ở v1.4 (kiểm duyệt; không có token Discord thật, container PostgreSQL 18.6 / Redis 8.8.3 dùng một lần): `npm run typecheck`, `lint`, `build`, `check-commands` (35 lệnh) và `npm test` đạt; 26 lệnh hiện có ngoài `/settings` được tuần tự hóa y hệt trước đây và `/settings` chỉ thêm `mod-log` và `mod-dm`; mọi lệnh mới có quyền thành viên mặc định, bản địa hóa tiếng Việt và giới hạn tùy chọn đúng; migration `0002_moderation` áp dụng và chạy lặp lại không lỗi (3 dòng trong `drizzle.__drizzle_migrations`) và ràng buộc kiểm tra từ chối hành động lạ; 20 lần tạo vụ song song trong một máy chủ nhận số 1 đến 20 và số đã xóa không được dùng lại; khi dừng PostgreSQL, tạo vụ trả kết quả ngay mà không lỗi và kho cài đặt xếp hàng việc gỡ kênh và vai trò rồi chạy lại đúng câu lệnh cập nhật đó sau khi hồi phục; cơ sở dữ liệu chỉ có `0000` và `0001` làm bot ghi log `Database schema is missing or outdated`; luồng kiểm duyệt (thứ tự kiểm tra, tin nhắn riêng trước khi cấm hoặc đuổi và sau khi hạn chế hoặc cảnh cáo, ánh xạ lỗi, ghi chú) với đối tượng Discord giả; khởi động offline với token giả (migration áp dụng, kết nối Redis và PostgreSQL, đúng một dòng `Login failed`, không lộ bí mật trong log).
+
+Khuyến nghị thử nhanh trên một máy chủ thật: `/play never gonna give you up`, `/pause`, `/resume`, `/skip`, `/queue` và các nút trên tin nhắn "Đang phát"; sau đó `/settings mod-log`, `/warn` và `/case view` với một thành viên thử.
 
 ## Lưu ý pháp lý
 
@@ -555,8 +612,9 @@ src/
   index.ts            Điểm vào, đăng nhập và tắt bot an toàn
   config/             Đọc và kiểm tra biến môi trường, hằng số
   client/             BotClient và đăng ký sự kiện
-  commands/           Lệnh theo nhóm: general/, music/, settings/ và index.ts (danh sách tường minh)
-  events/             Sự kiện Discord (ready, guildDelete, guildRoleDelete, interaction, voice state)
+  commands/           Lệnh theo nhóm: general/, music/, moderation/, settings/ và index.ts (danh sách tường minh)
+  events/             Sự kiện Discord (ready, guildDelete, guildRoleDelete, channelDelete, interaction, voice state)
+  moderation/         Kiểm duyệt: kiểm tra mục tiêu, thời lượng, giới hạn, luồng xử lý, nhật ký kiểm duyệt, kiểm tra quyền
   interactions/       Xử lý lệnh, nút bấm, autocomplete, cooldown
   music/              Lavalink, hàng đợi, kiểm tra điều kiện, điều khiển, tìm kiếm, lời bài hát
     discovery/        Engine gợi ý, autoplay, bộ lọc và các nguồn (providers/)
@@ -577,7 +635,7 @@ Makefile              Lệnh tắt gọi scripts/ hoặc docker compose (make he
 docs/DEPLOY.md        Hướng dẫn triển khai chi tiết (tiếng Anh); docs/DEPLOY.vi.md bản tiếng Việt
 README.vi.md          README tiếng Việt (README.md là bản tiếng Anh)
 backups/              Sao lưu PostgreSQL do backup.sh tạo (bị .gitignore loại trừ)
-drizzle/              Migration SQL đã sinh (0000_init.sql, 0001_guild_language.sql; giữ trong git, không sửa tay)
+drizzle/              Migration SQL đã sinh (0000_init.sql, 0001_guild_language.sql, 0002_moderation.sql của v1.4; giữ trong git, không sửa tay)
 drizzle.config.ts     Cấu hình drizzle-kit
 lavalink/             application.yml (thư mục plugins/ chỉ còn .gitkeep; plugin nằm trong volume Docker)
 ```

@@ -90,6 +90,15 @@ make ps
 - Khi chạy bot trên máy host thay vì Docker, chạy `npm run db:migrate` trước khi khởi động; nếu không, bot ghi log `Database schema is missing or outdated` và chạy ở chế độ suy giảm.
 - Câu trả lời và tin nhắn trong kênh chuyển sang tiếng Anh, trừ khi máy chủ chọn ngôn ngữ bằng `/settings language` hoặc đã đặt `DEFAULT_LOCALE=vi`. Log bằng tiếng Anh.
 
+### Nâng cấp lên v1.4
+
+- `./scripts/update.sh` sao lưu PostgreSQL trước như mọi lần. Giữ bản sao lưu đó tới khi bản nâng cấp chạy ổn.
+- Bot tự áp dụng migration `0002_moderation` khi khởi động: thêm bảng `mod_cases`, `mod_case_counters` và hai cột `guild_settings.mod_log_channel_id`, `mod_dm_target`. Khi chạy bot trên máy host thay vì Docker, chạy `npm run db:migrate` trước khi khởi động; nếu không, bot ghi log `Database schema is missing or outdated` và chạy ở chế độ suy giảm.
+- Lệnh slash được đăng ký lại một lần vì định nghĩa lệnh đã đổi (8 lệnh kiểm duyệt, `/settings mod-log` và `/settings mod-dm`).
+- Vai trò của bot ở mỗi máy chủ cần các quyền mới Kick Members, Ban Members, Timeout Members, Manage Messages và Read Message History: mở lại liên kết mời mới trong README, hoặc tự cấp các quyền đó cho vai trò của bot.
+- Kéo vai trò của bot lên trên các thành viên mà bot cần xử lý (Cài đặt máy chủ > Vai trò); Discord từ chối thao tác với thành viên có vai trò cao nhất không thấp hơn vai trò của bot.
+- Không cần intent gateway mới và không cần biến `.env` mới.
+
 ## 5. Sao lưu, khôi phục, giữ bản
 
 ```bash
@@ -236,4 +245,5 @@ Hãy chạy `./scripts/backup.sh` và chép bản sao ra ngoài trước khi dù
 - Cron sao lưu, xoay mật khẩu trên stack đang chạy, giới hạn tài nguyên mẫu, quy trình chuyển dữ liệu từ stack dev v1.1, khôi phục vào cơ sở dữ liệu có lược đồ khác với mã hiện tại.
 - Thời gian build lần đầu trên máy trắng; dung lượng đĩa và RAM thực tế trên VPS.
 - v1.3: hiển thị lệnh đã bản địa hóa trong ứng dụng Discord thật, `/settings language` trong máy chủ thật, nâng cấp stack đang chạy thật (chi tiết trong README).
+- v1.4 kiểm duyệt: mọi hành động kiểm duyệt với thành viên Discord thật (thứ bậc, tin nhắn riêng, lý do trong nhật ký kiểm tra, `/purge`), nhật ký kiểm duyệt trong ứng dụng thật, việc cập nhật quyền khi mời lại bot, nâng cấp stack đang chạy thật lên v1.4 (chi tiết trong README).
 - Mọi mục đã nêu trong [README, mục "Những gì chưa được kiểm chứng runtime"](../README.vi.md#những-gì-chưa-được-kiểm-chứng-runtime) (v1 và v1.1) vẫn còn hiệu lực.

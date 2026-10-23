@@ -89,6 +89,15 @@ make ps
 - The slash commands are re-registered once because their definitions changed (English descriptions with Vietnamese localizations, the new `/settings language` subcommand).
 - Bot replies and channel messages switch to English unless the server picks a language with `/settings language` or `DEFAULT_LOCALE=vi` is set. Logs are in English.
 
+### Upgrading to v1.4
+
+- `./scripts/update.sh` backs up PostgreSQL first, as always. Keep that backup until the upgrade works.
+- The bot applies migration `0002_moderation` automatically on startup: it adds the `mod_cases` and `mod_case_counters` tables and the `guild_settings.mod_log_channel_id` and `mod_dm_target` columns. When running the bot on the host instead of Docker, run `npm run db:migrate` before starting it; otherwise the bot logs `Database schema is missing or outdated` and runs in degraded mode.
+- The slash commands are re-registered once because their definitions changed (8 moderation commands, `/settings mod-log` and `/settings mod-dm`).
+- The bot's role in each server needs the new permissions Kick Members, Ban Members, Timeout Members, Manage Messages and Read Message History: open the new invite link from the README again, or grant them to the bot's role by hand.
+- Move the bot's role above the members it should moderate (Server Settings > Roles); Discord refuses actions on members whose highest role is not below the bot's.
+- No new gateway intent and no new `.env` variable are needed.
+
 ## 5. Backups, restore, retention
 
 ```bash
@@ -237,4 +246,5 @@ Run `./scripts/backup.sh` and copy the backup off the machine before using `down
 - Cron backups, rotating passwords on a running stack, the sample resource limits, the data migration procedure from the v1.1 dev stack, restoring into a database whose schema differs from the current code.
 - First build time on a clean machine; real disk and RAM usage on a VPS.
 - v1.3: how localized commands render in real Discord clients, `/settings language` in a real server, upgrading a real running stack (details in the README).
+- v1.4 moderation: every moderation action against real Discord members (hierarchy, DMs, audit-log reasons, `/purge`), the mod log in a real client, the re-invite permission update, upgrading a real running stack to v1.4 (details in the README).
 - Every item listed in the [README section "What has not been verified at runtime"](../README.md#what-has-not-been-verified-at-runtime) (v1 and v1.1) still applies.
