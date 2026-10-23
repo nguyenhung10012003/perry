@@ -167,6 +167,36 @@ export const vi: Messages = {
       amount: "Số tin nhắn cần xóa (1-100)",
       user: "Chỉ xóa tin nhắn của người dùng này",
     },
+    rank: {
+      description: "Xem cấp độ, XP và thứ hạng của một thành viên",
+      user: "Thành viên cần xem (mặc định: bạn)",
+    },
+    leaderboard: {
+      description: "Xem bảng xếp hạng XP của máy chủ này",
+      page: "Số trang muốn xem",
+    },
+    xp: {
+      description: "Thay đổi XP của một thành viên (cần quyền Quản lý máy chủ)",
+      add: {
+        description: "Cộng XP cho một thành viên",
+        user: "Thành viên được cộng XP",
+        amount: "Số XP cần cộng (1-1.000.000)",
+      },
+      remove: {
+        description: "Trừ XP của một thành viên",
+        user: "Thành viên bị trừ XP",
+        amount: "Số XP cần trừ (1-1.000.000)",
+      },
+      set: {
+        description: "Đặt tổng XP của một thành viên",
+        user: "Thành viên cần đặt XP",
+        xp: "Tổng XP mới (0-2.000.000.000)",
+      },
+      reset: {
+        description: "Xóa XP và cấp độ của một thành viên",
+        user: "Thành viên cần xóa XP",
+      },
+    },
     settings: {
       description: "Cài đặt bot cho máy chủ này",
       view: { description: "Xem cài đặt hiện tại" },
@@ -191,11 +221,25 @@ export const vi: Messages = {
         description: "Bật hoặc tắt tin nhắn riêng gửi cho người bị xử lý",
         enabled: "Nhắn riêng cho người dùng khi bị cấm, đuổi, hạn chế hoặc cảnh cáo",
       },
+      leveling: {
+        description:
+          "Xem hoặc đổi cài đặt cấp độ: bật/tắt XP và nơi thông báo lên cấp",
+        enabled: "Thành viên nhận XP khi nhắn tin",
+        announce: "Nơi gửi thông báo lên cấp",
+        channel: "Kênh nhận thông báo lên cấp; chọn kênh thì thông báo được gửi vào đó",
+        modes: {
+          off: "Tắt",
+          current: "Kênh của tin nhắn",
+          channel: "Kênh đã cấu hình",
+          dm: "Tin nhắn riêng",
+        },
+      },
     },
   },
   categories: {
     music: "🎵 Âm nhạc",
     moderation: "🛡️ Kiểm duyệt",
+    leveling: "🏆 Cấp độ",
     general: "🧰 Chung",
     settings: "⚙️ Cài đặt",
   },
@@ -406,6 +450,12 @@ export const vi: Messages = {
     modDm: "Nhắn riêng khi xử lý",
     modDmSet: (enabled: boolean) =>
       `✅ Nhắn riêng khi xử lý: **${enabled ? "Bật" : "Tắt"}**.`,
+    leveling: "Cấp độ",
+    levelUpMode: "Thông báo lên cấp",
+    levelUpChannel: "Kênh thông báo lên cấp",
+    levelUpNoAccess:
+      "Tôi không thể gửi tin nhắn trong kênh đó. Tôi cần quyền Xem kênh, Gửi tin nhắn và Nhúng liên kết ở đó.",
+    levelingSaved: "✅ Đã lưu cài đặt cấp độ.",
   },
   moderation: {
     self: "Bạn không thể dùng lệnh này với chính mình.",
@@ -498,10 +548,43 @@ export const vi: Messages = {
     },
   },
   leveling: {
+    disabled: "Hệ thống cấp độ đang tắt trong máy chủ này.",
+    botsNoXp: "Bot không nhận XP.",
+    storageUnavailable:
+      "Dữ liệu cấp độ tạm thời không khả dụng. Vui lòng thử lại sau.",
+    rank: {
+      title: "📊 Thứ hạng",
+      level: "Cấp độ",
+      xp: "XP",
+      totalXp: "Tổng XP",
+      rank: "Hạng",
+      rankOf: (rank: string, total: string) => `#${rank} trên ${total}`,
+      unranked: "Thành viên này chưa có XP.",
+    },
+    leaderboard: {
+      title: "🏆 Bảng xếp hạng",
+      line: (rank: string, mention: string, level: string, xp: string) =>
+        `**${rank}.** ${mention} · Cấp ${level} · ${xp} XP`,
+      empty: "Chưa có ai nhận XP trong máy chủ này.",
+      footer: (page: number, totalPages: number) =>
+        `Trang ${page}/${totalPages}`,
+    },
     levelUp: (mention: string, level: number) =>
       `🎉 ${mention} đã đạt cấp **${level}**!`,
     rewardsGained: (roleMentions: string[]) =>
       `🎁 Vai trò mới: ${roleMentions.join(", ")}`,
+    xp: {
+      added: (user: string, amount: string, xp: string, level: string) =>
+        `✅ Đã cộng ${amount} XP cho ${user}. Hiện có **${xp} XP**, cấp **${level}**.`,
+      removed: (user: string, amount: string, xp: string, level: string) =>
+        `✅ Đã trừ ${amount} XP của ${user}. Hiện có **${xp} XP**, cấp **${level}**.`,
+      set: (user: string, xp: string, level: string) =>
+        `✅ Đã đặt XP của ${user} thành **${xp} XP**, cấp **${level}**.`,
+      reset: (user: string) => `✅ Đã xóa XP và cấp độ của ${user}.`,
+      notFound: "Thành viên này chưa có XP.",
+      amountOutOfRange: (min: string, max: string) =>
+        `Số lượng phải là số nguyên từ ${min} đến ${max}.`,
+    },
   },
   filters: {
     names: {

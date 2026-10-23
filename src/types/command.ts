@@ -6,7 +6,7 @@ import type {
 import type { BotClient } from '../client/bot-client.js';
 import type { Locale, Messages } from '../i18n/index.js';
 
-export type Category = 'music' | 'moderation' | 'general' | 'settings';
+export type Category = 'music' | 'moderation' | 'leveling' | 'general' | 'settings';
 
 export interface Requirements {
   /** User must be in a voice channel (and the bot's channel when a player exists). */

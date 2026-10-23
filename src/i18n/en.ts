@@ -175,6 +175,36 @@ export const en = {
       amount: "Number of messages to delete (1-100)",
       user: "Only delete messages from this user",
     },
+    rank: {
+      description: "Show the level, XP and rank of a member",
+      user: "Member to show (default: you)",
+    },
+    leaderboard: {
+      description: "Show the XP leaderboard of this server",
+      page: "Page number to show",
+    },
+    xp: {
+      description: "Change the XP of a member (needs Manage Server)",
+      add: {
+        description: "Give XP to a member",
+        user: "Member who gets the XP",
+        amount: "XP to add (1-1,000,000)",
+      },
+      remove: {
+        description: "Take XP away from a member",
+        user: "Member who loses the XP",
+        amount: "XP to remove (1-1,000,000)",
+      },
+      set: {
+        description: "Set the total XP of a member",
+        user: "Member whose XP to set",
+        xp: "New total XP (0-2,000,000,000)",
+      },
+      reset: {
+        description: "Delete the XP and level of a member",
+        user: "Member whose XP to delete",
+      },
+    },
     settings: {
       description: "Bot settings for this server",
       view: { description: "Show the current settings" },
@@ -199,11 +229,25 @@ export const en = {
         description: "Turn the DM to moderated users on or off",
         enabled: "DM the user on a ban, kick, timeout or warning",
       },
+      leveling: {
+        description:
+          "Show or change leveling: XP on or off and where level-ups are announced",
+        enabled: "Members earn XP for their messages",
+        announce: "Where level-up messages go",
+        channel: "Channel for level-up messages; picking one sends them there",
+        modes: {
+          off: "Off",
+          current: "Channel of the message",
+          channel: "Configured channel",
+          dm: "Direct message",
+        },
+      },
     },
   },
   categories: {
     music: "🎵 Music",
     moderation: "🛡️ Moderation",
+    leveling: "🏆 Leveling",
     general: "🧰 General",
     settings: "⚙️ Settings",
   },
@@ -422,6 +466,12 @@ export const en = {
     modDm: "DM on action",
     modDmSet: (enabled: boolean) =>
       `✅ DM on moderation actions: **${enabled ? "On" : "Off"}**.`,
+    leveling: "Leveling",
+    levelUpMode: "Level-up messages",
+    levelUpChannel: "Level-up channel",
+    levelUpNoAccess:
+      "I can't post in that channel. I need View Channel, Send Messages and Embed Links there.",
+    levelingSaved: "✅ Leveling settings saved.",
   },
   moderation: {
     self: "You can't use this on yourself.",
@@ -515,10 +565,42 @@ export const en = {
     },
   },
   leveling: {
+    disabled: "Leveling is turned off in this server.",
+    botsNoXp: "Bots do not earn XP.",
+    storageUnavailable:
+      "Levels are temporarily unavailable. Please try again later.",
+    rank: {
+      title: "📊 Rank",
+      level: "Level",
+      xp: "XP",
+      totalXp: "Total XP",
+      rank: "Rank",
+      rankOf: (rank: string, total: string) => `#${rank} of ${total}`,
+      unranked: "This member has no XP yet.",
+    },
+    leaderboard: {
+      title: "🏆 Leaderboard",
+      line: (rank: string, mention: string, level: string, xp: string) =>
+        `**${rank}.** ${mention} · Lv ${level} · ${xp} XP`,
+      empty: "Nobody has earned XP in this server yet.",
+      footer: (page: number, totalPages: number) => `Page ${page}/${totalPages}`,
+    },
     levelUp: (mention: string, level: number) =>
       `🎉 ${mention} reached level **${level}**!`,
     rewardsGained: (roleMentions: string[]) =>
       `🎁 New ${roleMentions.length === 1 ? "role" : "roles"}: ${roleMentions.join(", ")}`,
+    xp: {
+      added: (user: string, amount: string, xp: string, level: string) =>
+        `✅ Added ${amount} XP to ${user}. Now **${xp} XP**, level **${level}**.`,
+      removed: (user: string, amount: string, xp: string, level: string) =>
+        `✅ Removed ${amount} XP from ${user}. Now **${xp} XP**, level **${level}**.`,
+      set: (user: string, xp: string, level: string) =>
+        `✅ Set the XP of ${user} to **${xp} XP**, level **${level}**.`,
+      reset: (user: string) => `✅ Deleted the XP and level of ${user}.`,
+      notFound: "That member has no XP yet.",
+      amountOutOfRange: (min: string, max: string) =>
+        `The amount must be a whole number from ${min} to ${max}.`,
+    },
   },
   filters: {
     names: {

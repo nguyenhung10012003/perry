@@ -1,6 +1,9 @@
 import type { Command } from "../types/command.js";
 import { help } from "./general/help.js";
 import { ping } from "./general/ping.js";
+import { leaderboard } from "./leveling/leaderboard.js";
+import { rank } from "./leveling/rank.js";
+import { xp } from "./leveling/xp.js";
 import { ban } from "./moderation/ban.js";
 import { modCase } from "./moderation/case.js";
 import { kick } from "./moderation/kick.js";
@@ -74,6 +77,10 @@ export const commands: Command[] = [
   warnings,
   modCase,
   purge,
+  // leveling
+  rank,
+  leaderboard,
+  xp,
   // settings
   settings,
 ];

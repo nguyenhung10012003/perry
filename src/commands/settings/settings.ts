@@ -1,12 +1,48 @@
 import { ChannelType, MessageFlags, PermissionFlagsBits } from "discord.js";
 import { MAX_VOLUME } from "../../config/constants.js";
 import { getMessages, isLocale, LOCALE_NAMES, resolveLocale } from "../../i18n/index.js";
+import type { Messages } from "../../i18n/index.js";
 import { refreshNowPlaying } from "../../music/now-playing.js";
+import { LEVEL_UP_MODES } from "../../settings/guild-settings.js";
+import type { GuildSettings } from "../../settings/guild-settings.js";
 import type { Command } from "../../types/command.js";
 import { postableTextChannel } from "../../utils/channels.js";
 import { baseEmbed } from "../../utils/embeds.js";
 import { replyError, replyInfo } from "../../utils/respond.js";
 import { choice, createCommand, describe } from "../builder.js";
+
+/** The level-up mode label, with the channel when messages go to the configured channel. */
+function levelUpLabel(t: Messages, current: GuildSettings): string {
+  const mode = t.commands.settings.leveling.modes[current.levelUpMode];
+  return current.levelUpMode === "channel" && current.levelUpChannelId
+    ? `${mode} (<#${current.levelUpChannelId}>)`
+    : mode;
+}
+
+/** The current leveling settings of `/settings leveling`. */
+function levelingEmbed(t: Messages, current: GuildSettings) {
+  return baseEmbed()
+    .setTitle(t.settings.title)
+    .addFields(
+      {
+        name: t.settings.leveling,
+        value: current.levelingEnabled ? t.settings.on : t.settings.off,
+        inline: true,
+      },
+      {
+        name: t.settings.levelUpMode,
+        value: t.commands.settings.leveling.modes[current.levelUpMode],
+        inline: true,
+      },
+      {
+        name: t.settings.levelUpChannel,
+        value: current.levelUpChannelId
+          ? `<#${current.levelUpChannelId}>`
+          : t.settings.notSet,
+        inline: true,
+      },
+    );
+}
 
 export const settings: Command = {
   data: createCommand("settings", (m) => m.commands.settings.description)
@@ -54,6 +90,24 @@ export const settings: Command = {
         .addBooleanOption((option) =>
           describe(option.setName("enabled"), (m) => m.commands.settings.modDm.enabled)
             .setRequired(true),
+        ),
+    )
+    .addSubcommand((sub) =>
+      describe(sub.setName("leveling"), (m) => m.commands.settings.leveling.description)
+        .addBooleanOption((option) =>
+          describe(option.setName("enabled"), (m) => m.commands.settings.leveling.enabled),
+        )
+        .addStringOption((option) =>
+          describe(option.setName("announce"), (m) => m.commands.settings.leveling.announce)
+            .addChoices(
+              ...LEVEL_UP_MODES.map((mode) =>
+                choice(mode, (m) => m.commands.settings.leveling.modes[mode]),
+              ),
+            ),
+        )
+        .addChannelOption((option) =>
+          describe(option.setName("channel"), (m) => m.commands.settings.leveling.channel)
+            .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement),
         ),
     ),
   category: "settings",
@@ -116,6 +170,16 @@ export const settings: Command = {
             {
               name: t.settings.modDm,
               value: current.modDmTarget ? t.settings.on : t.settings.off,
+              inline: true,
+            },
+            {
+              name: t.settings.leveling,
+              value: current.levelingEnabled ? t.settings.on : t.settings.off,
+              inline: true,
+            },
+            {
+              name: t.settings.levelUpMode,
+              value: levelUpLabel(t, current),
               inline: true,
             },
           );
@@ -194,6 +258,49 @@ export const settings: Command = {
         const enabled = interaction.options.getBoolean("enabled", true);
         await client.settings.update(guildId, { modDmTarget: enabled });
         await replyInfo(interaction, t.settings.modDmSet(enabled));
+        return;
+      }
+      case "leveling": {
+        const enabled = interaction.options.getBoolean("enabled");
+        const announce = interaction.options.getString("announce");
+        const channel = interaction.options.getChannel("channel");
+        // No option: show the current leveling settings.
+        if (enabled === null && announce === null && channel === null) {
+          const current = await client.settings.get(guildId);
+          await interaction.reply({
+            embeds: [levelingEmbed(t, current)],
+            flags: MessageFlags.Ephemeral,
+            allowedMentions: { parse: [] },
+          });
+          return;
+        }
+        const mode =
+          announce === null
+            ? undefined
+            : LEVEL_UP_MODES.find((candidate) => candidate === announce);
+        if (announce !== null && mode === undefined) {
+          await replyError(interaction, t.errors.unknownCommand);
+          return;
+        }
+        const patch: Partial<GuildSettings> = {};
+        if (enabled !== null) patch.levelingEnabled = enabled;
+        if (mode !== undefined) patch.levelUpMode = mode;
+        if (channel) {
+          // Same rule as /settings mod-log: the bot must be able to post embeds there. Nothing is saved otherwise.
+          if (!postableTextChannel(client, channel.id)) {
+            await replyError(interaction, t.settings.levelUpNoAccess);
+            return;
+          }
+          patch.levelUpChannelId = channel.id;
+          // A channel without `announce` means "announce in that channel".
+          patch.levelUpMode = mode ?? "channel";
+        }
+        const updated = await client.settings.update(guildId, patch);
+        await interaction.reply({
+          embeds: [levelingEmbed(t, updated).setDescription(t.settings.levelingSaved)],
+          flags: MessageFlags.Ephemeral,
+          allowedMentions: { parse: [] },
+        });
         return;
       }
       default:

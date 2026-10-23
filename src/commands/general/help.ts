@@ -4,7 +4,7 @@ import type { Category, Command } from '../../types/command.js';
 import { baseEmbed } from '../../utils/embeds.js';
 import { createCommand } from '../builder.js';
 
-const CATEGORY_ORDER: Category[] = ['music', 'moderation', 'general', 'settings'];
+const CATEGORY_ORDER: Category[] = ['music', 'moderation', 'leveling', 'general', 'settings'];
 
 export const help: Command = {
   data: createCommand('help', (m) => m.commands.help.description),

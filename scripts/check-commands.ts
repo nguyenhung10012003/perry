@@ -10,6 +10,7 @@ const EXPECTED = [
   'remove', 'clear', 'move', 'filter', 'lyrics', 'ping', 'help', 'settings',
   'autoplay', 'radio', 'similar',
   'ban', 'unban', 'kick', 'timeout', 'warn', 'warnings', 'case', 'purge',
+  'rank', 'leaderboard', 'xp',
 ] as const;
 
 const partial = process.argv.includes('--partial');
@@ -116,7 +117,7 @@ function isCommand(value: unknown): value is Command {
 }
 
 const commandsDir = fileURLToPath(new URL('../src/commands/', import.meta.url));
-for (const category of ['general', 'music', 'moderation', 'settings']) {
+for (const category of ['general', 'music', 'moderation', 'leveling', 'settings']) {
   const dir = join(commandsDir, category);
   if (!existsSync(dir)) continue;
   for (const file of readdirSync(dir).filter((f) => f.endsWith('.ts'))) {
