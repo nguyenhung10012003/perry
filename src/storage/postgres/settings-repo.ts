@@ -1,9 +1,12 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { isLocale } from '../../i18n/locales.js';
 import type { GuildSettings } from '../../settings/guild-settings.js';
 import { AUTOPLAY_MODES, defaultSettings } from '../../settings/guild-settings.js';
 import type { Database } from './client.js';
 import { guildSettings } from './schema.js';
+
+// Repo input rule (design 4.6.2): callers pass only range-checked values (validateSettingsPatch), because
+// BackendHealth.attempt marks Postgres down for ANY thrown error, data errors included.
 
 type Row = typeof guildSettings.$inferSelect;
 type Columns = Partial<typeof guildSettings.$inferInsert>;
@@ -19,6 +22,8 @@ function toSettings(row: Row): GuildSettings {
     defaultTextChannelId: row.defaultTextChannelId,
     defaultVoiceChannelId: row.defaultVoiceChannelId,
     language: isLocale(row.language) ? row.language : null,
+    modLogChannelId: row.modLogChannelId,
+    modDmTarget: row.modDmTarget,
   };
 }
 
@@ -33,6 +38,8 @@ function toColumns(patch: Partial<GuildSettings>): Columns {
   if (patch.defaultTextChannelId !== undefined) columns.defaultTextChannelId = patch.defaultTextChannelId;
   if (patch.defaultVoiceChannelId !== undefined) columns.defaultVoiceChannelId = patch.defaultVoiceChannelId;
   if (patch.language !== undefined) columns.language = patch.language;
+  if (patch.modLogChannelId !== undefined) columns.modLogChannelId = patch.modLogChannelId;
+  if (patch.modDmTarget !== undefined) columns.modDmTarget = patch.modDmTarget;
   return columns;
 }
 
@@ -64,4 +71,43 @@ export async function upsertSettings(
 
 export async function deleteSettings(db: Database, guildId: string): Promise<void> {
   await db.delete(guildSettings).where(eq(guildSettings.guildId, guildId));
+}
+
+/**
+ * Clears every setting that points to the deleted channel in one guarded UPDATE, so concurrent event handlers and
+ * writers cannot bring the id back. Returns the updated row, or null when nothing referred to the channel.
+ */
+export async function removeChannelReferences(
+  db: Database,
+  guildId: string,
+  channelId: string,
+): Promise<GuildSettings | null> {
+  const rows = await db
+    .update(guildSettings)
+    .set({
+      modLogChannelId: sql`nullif(${guildSettings.modLogChannelId}, ${channelId})`,
+      updatedAt: sql`now()`,
+    })
+    .where(and(eq(guildSettings.guildId, guildId), eq(guildSettings.modLogChannelId, channelId)))
+    .returning();
+  const row = rows[0];
+  return row ? toSettings(row) : null;
+}
+
+/** Same as removeChannelReferences for a deleted role. */
+export async function removeRoleReferences(
+  db: Database,
+  guildId: string,
+  roleId: string,
+): Promise<GuildSettings | null> {
+  const rows = await db
+    .update(guildSettings)
+    .set({
+      djRoleId: sql`nullif(${guildSettings.djRoleId}, ${roleId})`,
+      updatedAt: sql`now()`,
+    })
+    .where(and(eq(guildSettings.guildId, guildId), eq(guildSettings.djRoleId, roleId)))
+    .returning();
+  const row = rows[0];
+  return row ? toSettings(row) : null;
 }

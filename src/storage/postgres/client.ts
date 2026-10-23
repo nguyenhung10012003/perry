@@ -32,6 +32,13 @@ export const PG_UNDEFINED_TABLE = '42P01';
 /** SQLSTATE for "undefined column": a newer migration (e.g. 0001 guild language) has not been applied. */
 export const PG_UNDEFINED_COLUMN = '42703';
 
+/**
+ * Schema probe shared by ensureSchema() and the Postgres health probe, so they cannot drift.
+ * Touches the newest column of every table; LIMIT 0 makes the cross join free.
+ */
+export const SCHEMA_PROBE = sql`select gs.mod_dm_target, mc.case_number, cc.last_case_number
+  from guild_settings gs, mod_cases mc, mod_case_counters cc limit 0`;
+
 /** Creates the pool lazily: no connection is opened until the first query. */
 export function createPostgres(databaseUrl: string, logger: Logger): PostgresClient {
   const pool = new pg.Pool({
@@ -49,13 +56,13 @@ export function createPostgres(databaseUrl: string, logger: Logger): PostgresCli
 }
 
 /**
- * Probes the schema, including the newest column (guild_settings.language). Resolves true when it is current;
+ * Probes the schema (SCHEMA_PROBE). Resolves true when it is current;
  * false when migrations are missing or outdated (logs the single "run npm run db:migrate" line).
  * Other failures are rethrown.
  */
 export async function ensureSchema(db: Database, logger: Logger): Promise<boolean> {
   try {
-    await db.execute(sql`select language from guild_settings limit 0`);
+    await db.execute(SCHEMA_PROBE);
     return true;
   } catch (err) {
     const code = pgErrorCode(err);

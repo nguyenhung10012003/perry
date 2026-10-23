@@ -4,10 +4,16 @@ import { LOCALES } from '../i18n/locales.js';
 import type { BackendHealth } from '../storage/health.js';
 import type { Keys } from '../storage/keys.js';
 import type { Database } from '../storage/postgres/client.js';
-import { deleteSettings, getSettings, upsertSettings } from '../storage/postgres/settings-repo.js';
+import {
+  deleteSettings,
+  getSettings,
+  removeChannelReferences,
+  removeRoleReferences,
+  upsertSettings,
+} from '../storage/postgres/settings-repo.js';
 import type { KeyValueCache } from '../storage/types.js';
-import type { GuildSettings, GuildSettingsStore } from './guild-settings.js';
-import { defaultSettings, validateSettingsPatch } from './guild-settings.js';
+import type { GuildSettings, GuildSettingsStore, SettingsReference } from './guild-settings.js';
+import { defaultSettings, referencePatch, validateSettingsPatch } from './guild-settings.js';
 
 const L1_SWEEP_THRESHOLD = 1000;
 
@@ -21,6 +27,9 @@ const cachedSettingsSchema = z.object({
   defaultVoiceChannelId: z.string().nullable(),
   // Tolerated when absent: v1.2 entries have no language (and their DB row is still null), so no key version bump.
   language: z.enum(LOCALES).nullable().default(null),
+  // v1.4 fields; v1.3 entries decode with the column defaults.
+  modLogChannelId: z.string().nullable().default(null),
+  modDmTarget: z.boolean().default(true),
 });
 
 export interface PersistentSettingsDeps {
@@ -38,6 +47,18 @@ function withoutUndefined(patch: Partial<GuildSettings>): Partial<GuildSettings>
   return Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
 }
 
+function sameReference(a: SettingsReference, b: SettingsReference): boolean {
+  if ('channelId' in a) return 'channelId' in b && a.channelId === b.channelId;
+  return 'roleId' in b && a.roleId === b.roleId;
+}
+
+/** The atomic removal statement for one reference (also used to replay queued removals). */
+function removeReference(db: Database, guildId: string, ref: SettingsReference): Promise<GuildSettings | null> {
+  return 'channelId' in ref
+    ? removeChannelReferences(db, guildId, ref.channelId)
+    : removeRoleReferences(db, guildId, ref.roleId);
+}
+
 /**
  * Guild settings: L1 memory (5 s) -> Redis cache (1 h) -> Postgres (source of truth).
  *
@@ -45,6 +66,8 @@ function withoutUndefined(patch: Partial<GuildSettings>): Partial<GuildSettings>
  * - Redis unreachable for the delete: the guild id is remembered and deleted when Redis recovers.
  * - Postgres unreachable: reads serve the last known (or default) settings from `fallback`; writes are applied to
  *   `fallback` and queued (`pendingWrites` / `pendingResets`), then flushed with an upsert when Postgres recovers.
+ *   Reference removals (deleted channel or role) queue the reference itself (`pendingRemovals`), never a rebuilt
+ *   value, and replay the same atomic UPDATE after the queued writes.
  * No method rejects, except update() for an invalid patch (RangeError).
  */
 export class PersistentGuildSettingsStore implements GuildSettingsStore {
@@ -52,6 +75,8 @@ export class PersistentGuildSettingsStore implements GuildSettingsStore {
   private readonly fallback = new Map<string, GuildSettings>();
   private readonly pendingWrites = new Map<string, Partial<GuildSettings>>();
   private readonly pendingResets = new Set<string>();
+  /** References queued during a Postgres outage, in order (append only, duplicates skipped). */
+  private readonly pendingRemovals = new Map<string, SettingsReference[]>();
   private readonly pendingInvalidations = new Set<string>();
   /** Bumped by every write; a read that overlapped a write must not repopulate the caches with stale data. */
   private epoch = 0;
@@ -62,7 +87,7 @@ export class PersistentGuildSettingsStore implements GuildSettingsStore {
   }
 
   async get(guildId: string): Promise<GuildSettings> {
-    if (this.hasPending(guildId)) return { ...(this.fallback.get(guildId) ?? defaultSettings()) };
+    if (this.hasPending(guildId)) return this.withPendingRemovals(guildId, this.fallback.get(guildId) ?? defaultSettings());
     const hit = this.l1.get(guildId);
     if (hit !== undefined && hit.expiresAt > Date.now()) return { ...hit.value };
 
@@ -103,6 +128,7 @@ export class PersistentGuildSettingsStore implements GuildSettingsStore {
       result = { ...(this.fallback.get(guildId) ?? defaultSettings()), ...clean };
       this.fallback.set(guildId, result);
       this.pendingWrites.set(guildId, { ...this.pendingWrites.get(guildId), ...clean });
+      result = this.withPendingRemovals(guildId, result);
     }
     await this.invalidate(guildId);
     return { ...result };
@@ -112,10 +138,38 @@ export class PersistentGuildSettingsStore implements GuildSettingsStore {
     this.epoch += 1;
     this.fallback.delete(guildId);
     this.pendingWrites.delete(guildId);
+    this.pendingRemovals.delete(guildId);
     const { db } = this.deps;
     const deleted = await this.deps.postgres.attempt(() => deleteSettings(db, guildId));
     if (deleted.ok) this.pendingResets.delete(guildId);
     else this.pendingResets.add(guildId);
+    await this.invalidate(guildId);
+  }
+
+  /**
+   * One atomic UPDATE per call (no read-modify-write), so concurrent removals and writers cannot resurrect an id.
+   * During a Postgres outage the reference is queued and replayed with the same statement on recovery.
+   */
+  async removeReferences(guildId: string, ref: SettingsReference): Promise<void> {
+    this.epoch += 1;
+    const { db } = this.deps;
+    const removed = await this.deps.postgres.attempt(async () => {
+      await this.flushGuild(guildId);
+      return removeReference(db, guildId, ref);
+    });
+    if (removed.ok) {
+      // null: nothing referred to the id, so there is nothing to invalidate.
+      if (removed.value === null) return;
+      this.fallback.set(guildId, removed.value);
+      await this.invalidate(guildId);
+      return;
+    }
+    // Read before queueing: the fallback map is empty while Redis still holds the row (e.g. started during the outage).
+    const current = await this.get(guildId);
+    if (!this.fallback.has(guildId)) this.fallback.set(guildId, current);
+    const queue = this.pendingRemovals.get(guildId);
+    if (queue === undefined) this.pendingRemovals.set(guildId, [ref]);
+    else if (!queue.some((queued) => sameReference(queued, ref))) queue.push(ref);
     await this.invalidate(guildId);
   }
 
@@ -125,7 +179,14 @@ export class PersistentGuildSettingsStore implements GuildSettingsStore {
   }
 
   private hasPending(guildId: string): boolean {
-    return this.pendingWrites.has(guildId) || this.pendingResets.has(guildId);
+    return this.pendingWrites.has(guildId) || this.pendingResets.has(guildId) || this.pendingRemovals.has(guildId);
+  }
+
+  /** A copy of base with every queued reference removed, in queue order. */
+  private withPendingRemovals(guildId: string, base: GuildSettings): GuildSettings {
+    let result = { ...base };
+    for (const ref of this.pendingRemovals.get(guildId) ?? []) result = { ...result, ...referencePatch(result, ref) };
+    return result;
   }
 
   private setL1(guildId: string, value: GuildSettings): void {
@@ -147,7 +208,10 @@ export class PersistentGuildSettingsStore implements GuildSettingsStore {
     this.deps.publishInvalidation?.(guildId);
   }
 
-  /** Applies queued writes of one guild to Postgres in order (reset first, then the merged patch). Throws on failure. */
+  /**
+   * Applies queued writes of one guild to Postgres in order (reset first, then the merged patch, then the queued
+   * reference removals). Throws on failure.
+   */
   private async flushGuild(guildId: string): Promise<void> {
     const { db } = this.deps;
     if (this.pendingResets.has(guildId)) {
@@ -160,10 +224,23 @@ export class PersistentGuildSettingsStore implements GuildSettingsStore {
       // Keep fields written meanwhile: only drop the queue entry if it was not extended during the await.
       if (this.pendingWrites.get(guildId) === patch) this.pendingWrites.delete(guildId);
     }
+    const queue = this.pendingRemovals.get(guildId);
+    if (queue !== undefined) {
+      const replay = [...queue];
+      for (const ref of replay) {
+        const row = await removeReference(db, guildId, ref);
+        if (row !== null) this.fallback.set(guildId, row);
+      }
+      // References appended during the replay stay queued; a reset meanwhile replaced or dropped the queue.
+      if (this.pendingRemovals.get(guildId) === queue) {
+        queue.splice(0, replay.length);
+        if (queue.length === 0) this.pendingRemovals.delete(guildId);
+      }
+    }
   }
 
   private async flushPendingWrites(): Promise<void> {
-    const guildIds = new Set([...this.pendingResets, ...this.pendingWrites.keys()]);
+    const guildIds = new Set([...this.pendingResets, ...this.pendingWrites.keys(), ...this.pendingRemovals.keys()]);
     for (const guildId of guildIds) {
       const flushed = await this.deps.postgres.attempt(() => this.flushGuild(guildId));
       if (!flushed.ok) return;

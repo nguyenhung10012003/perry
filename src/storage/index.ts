@@ -1,4 +1,3 @@
-import { sql } from 'drizzle-orm';
 import {
   STORAGE_CLOSE_TIMEOUT_MS,
   STORAGE_STARTUP_TIMEOUT_MS,
@@ -16,7 +15,7 @@ import { MemoryKeyValueCache } from './memory/memory-cache.js';
 import { MemoryCooldownStore, MemoryRateLimiter } from './memory/memory-cooldowns.js';
 import { MemoryRecentlyPlayedStore } from './memory/memory-recent.js';
 import { NullSnapshotStore } from './memory/null-snapshots.js';
-import { createPostgres, ensureSchema } from './postgres/client.js';
+import { createPostgres, ensureSchema, SCHEMA_PROBE } from './postgres/client.js';
 import { recordPlay } from './postgres/history-repo.js';
 import type { PlayHistoryEntry } from './postgres/history-repo.js';
 import { createRedis } from './redis/client.js';
@@ -115,10 +114,10 @@ async function createConfiguredStorage(config: Config, logger: Logger): Promise<
   const pgHealth = new BackendHealth({
     name: 'Postgres',
     logger: log,
-    // Probes the schema too (incl. the newest column), so a database without current migrations stays "down"
-    // until `npm run db:migrate` was run.
+    // Probes the schema too (the newest column of every table), so a database without current migrations stays
+    // "down" until `npm run db:migrate` was run.
     probe: async () => {
-      await db.execute(sql`select language from guild_settings limit 0`);
+      await db.execute(SCHEMA_PROBE);
     },
   });
   const redisHealth = redis.health;

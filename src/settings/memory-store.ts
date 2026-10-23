@@ -1,5 +1,5 @@
-import type { GuildSettings, GuildSettingsStore } from './guild-settings.js';
-import { defaultSettings, validateSettingsPatch } from './guild-settings.js';
+import type { GuildSettings, GuildSettingsStore, SettingsReference } from './guild-settings.js';
+import { defaultSettings, referencePatch, validateSettingsPatch } from './guild-settings.js';
 
 /** Settings kept in memory only; they reset when the process restarts. */
 export class InMemoryGuildSettingsStore implements GuildSettingsStore {
@@ -22,6 +22,12 @@ export class InMemoryGuildSettingsStore implements GuildSettingsStore {
 
   reset(guildId: string): Promise<void> {
     this.data.delete(guildId);
+    return Promise.resolve();
+  }
+
+  removeReferences(guildId: string, ref: SettingsReference): Promise<void> {
+    const current = this.data.get(guildId);
+    if (current !== undefined) this.data.set(guildId, { ...current, ...referencePatch(current, ref) });
     return Promise.resolve();
   }
 }

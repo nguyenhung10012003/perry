@@ -15,6 +15,13 @@
       "when": 1792485476615,
       "tag": "0001_guild_language",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792744592914,
+      "tag": "0002_moderation",
+      "breakpoints": true
     }
   ]
 }

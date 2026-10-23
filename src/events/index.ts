@@ -1,5 +1,6 @@
 import type { ClientEvents } from "discord.js";
 import type { BotClient } from "../client/bot-client.js";
+import { channelDelete } from "./channel-delete.js";
 import { clientReady } from "./client-ready.js";
 import { guildDelete } from "./guild-delete.js";
 import { guildRoleDelete } from "./guild-role-delete.js";
@@ -14,6 +15,7 @@ export interface BotEvent<K extends keyof ClientEvents = keyof ClientEvents> {
 
 /** Explicit list of event modules. */
 export const events: BotEvent<keyof ClientEvents>[] = [
+  channelDelete,
   clientReady,
   guildDelete,
   guildRoleDelete,
