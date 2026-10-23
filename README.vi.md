@@ -2,7 +2,7 @@
 
 [English](README.md) | **Tiếng Việt**
 
-Bot Discord đa máy chủ viết bằng TypeScript (discord.js 14) và phát nhạc qua máy chủ âm thanh [Lavalink](https://lavalink.dev) 4.2.2. Phiên bản 1.1 bổ sung lưu trữ bền vững (PostgreSQL + Redis), tự khám phá nhạc (autoplay, radio, bài tương tự) và khôi phục phiên phát sau khi khởi động lại. Phiên bản 1.2 đóng gói toàn bộ thành image Docker và stack Docker Compose chạy bằng ba lệnh, kèm script cài đặt, cập nhật, sao lưu và chẩn đoán. Phiên bản 1.3 (hiện tại) quốc tế hóa bot: tiếng Anh là mặc định, tiếng Việt chọn được theo từng máy chủ (xem [Ngôn ngữ](#ngôn-ngữ)). Bot có cấu trúc module để sau này thêm các nhóm tính năng khác (moderation, leveling, ...).
+Bot Discord đa máy chủ viết bằng TypeScript (discord.js 14) và phát nhạc qua máy chủ âm thanh [Lavalink](https://lavalink.dev) 4.2.2. Phiên bản 1.1 bổ sung lưu trữ bền vững (PostgreSQL + Redis), tự khám phá nhạc (autoplay, radio, bài tương tự) và khôi phục phiên phát sau khi khởi động lại. Phiên bản 1.2 đóng gói toàn bộ thành image Docker và stack Docker Compose chạy bằng ba lệnh, kèm script cài đặt, cập nhật, sao lưu và chẩn đoán. Phiên bản 1.3 quốc tế hóa bot: tiếng Anh là mặc định, tiếng Việt chọn được theo từng máy chủ (xem [Ngôn ngữ](#ngôn-ngữ)). Phiên bản 1.4 (hiện tại) thêm [kiểm duyệt](#kiểm-duyệt), [cấp độ](#cấp-độ) với XP, cấp và bảng xếp hạng, và một [web dashboard](#web-dashboard) tùy chọn, nơi người quản lý máy chủ đăng nhập bằng Discord và cấu hình bot cho từng máy chủ. Bot có cấu trúc module để sau này thêm các nhóm tính năng khác.
 
 ## Triển khai nhanh
 
@@ -27,6 +27,7 @@ docker compose up -d                                 # hoặc: make up
 - Lần đầu Lavalink tải 3 plugin nên mất khoảng 30-90 giây. Thời gian build image lần đầu trên máy trắng chưa được đo (lần kiểm tra có sẵn cache lớp).
 - Bot tự chạy migration cơ sở dữ liệu và tự đăng ký lệnh slash khi khởi động (xem [Đăng ký lệnh slash](#đăng-ký-lệnh-slash)).
 - Chạy tự động không hỏi (CI, script): `DISCORD_TOKEN=... DISCORD_CLIENT_ID=... ./scripts/setup.sh --non-interactive`.
+- Web dashboard (tùy chọn, v1.4): `./scripts/setup.sh --web` hỏi thêm `PUBLIC_URL` và `DISCORD_CLIENT_SECRET` và bật dịch vụ `web`; xem [Web dashboard](#web-dashboard).
 - Dùng `make up` thay vì `docker compose up -d` nếu muốn nhãn phiên bản/commit của image đúng (lệnh thứ hai gắn nhãn `dev`/`unknown`).
 
 Sau đó kiểm tra bằng `./scripts/doctor.sh` (hoặc `make doctor`) và xem log bằng `./scripts/logs.sh`.
@@ -51,7 +52,7 @@ git clone <URL-kho-mã-của-bạn> perry && cd perry   # chưa kiểm chứng
 make up
 ```
 
-Bước 3 (`setup.sh`, `make up`) đã chạy thật trên Docker Desktop; riêng `setup.sh` còn được chạy trong container Debian 12 (bash 5, GNU coreutils, không có `openssl`). Chi tiết từng bước và log mong đợi: [docs/DEPLOY.vi.md](docs/DEPLOY.vi.md).
+Bước 3 (`setup.sh`, `make up`) đã chạy thật trên Docker Desktop; riêng `setup.sh` còn được chạy trong container Debian 12 (bash 5, GNU coreutils, không có `openssl`). Chi tiết từng bước và log mong đợi: [docs/DEPLOY.vi.md](docs/DEPLOY.vi.md). Khi dùng web dashboard, reverse proxy phía trước nó cần mở thêm cổng 80 và 443 (`sudo ufw allow 80,443/tcp`, chưa kiểm chứng); xem [docs/DEPLOY.vi.md](docs/DEPLOY.vi.md#7-web-dashboard-sau-reverse-proxy).
 
 ### Cập nhật, sao lưu, log và chẩn đoán
 
@@ -99,7 +100,7 @@ npm run build && npm start
 ### Lưu ý bảo mật khi triển khai
 
 - Container bot chạy bằng user `node` (uid 1000), hệ tệp gốc chỉ đọc (chỉ `/tmp` ghi được), `cap_drop: ALL`, `no-new-privileges`. Bot không mở cổng HTTP nào.
-- Không dịch vụ nào publish cổng ra máy chủ trong `docker-compose.yml`: Lavalink, PostgreSQL và Redis chỉ nằm trong mạng riêng của Docker (đã kiểm tra `PortBindings` rỗng cho cả 4 container). Đừng tự thêm `ports:` cho chúng.
+- Không dịch vụ nào publish cổng ra máy chủ trong `docker-compose.yml`: Lavalink, PostgreSQL và Redis chỉ nằm trong mạng riêng của Docker (đã kiểm tra `PortBindings` rỗng cho cả 4 container). Đừng tự thêm `ports:` cho chúng. Dịch vụ `web` tùy chọn (v1.4) là dịch vụ duy nhất có cổng, chỉ bind `127.0.0.1` cho một reverse proxy trên cùng máy chủ (xem [Web dashboard](#web-dashboard)).
 - `.env` có quyền `600`; không commit, không dán vào issue hay chat. Nếu lộ token, vào Developer Portal chọn **Reset Token**, sửa `.env` rồi `./scripts/deploy.sh`.
 - Đổi mật khẩu Lavalink/Redis: sửa `.env` rồi `docker compose up -d` (tạo lại container). Mật khẩu PostgreSQL xem bảng trên.
 - Lưu ý: mật khẩu Redis và PostgreSQL nằm trong biến môi trường của container bot (`REDIS_URL`, `DATABASE_URL`) và trong tham số tiến trình của Redis, nên người dùng thuộc nhóm `docker` (tương đương root) đọc được qua `docker inspect`. Chỉ cấp nhóm `docker` cho người tin cậy.
@@ -107,7 +108,7 @@ npm run build && npm start
 
 ### Tài liệu chi tiết
 
-[docs/DEPLOY.vi.md](docs/DEPLOY.vi.md): hướng dẫn VPS đầy đủ, cập nhật và quay lui, sao lưu, `doctor.sh` giải thích, giới hạn tài nguyên, dùng image dựng sẵn từ GHCR (`BOT_IMAGE`), nâng cấp từ stack dev v1.1, danh sách chưa kiểm chứng.
+[docs/DEPLOY.vi.md](docs/DEPLOY.vi.md): hướng dẫn VPS đầy đủ, cập nhật và quay lui (kể cả nâng cấp lên v1.3 và v1.4), sao lưu, `doctor.sh` giải thích, web dashboard sau reverse proxy, giới hạn tài nguyên, dùng image dựng sẵn từ GHCR (`BOT_IMAGE`), nâng cấp từ stack dev v1.1, danh sách chưa kiểm chứng.
 
 ## Tính năng
 
@@ -118,6 +119,7 @@ npm run build && npm start
 - Vai trò DJ và cài đặt theo máy chủ qua `/settings`; cài đặt được lưu trong PostgreSQL nên không mất khi khởi động lại.
 - Kiểm duyệt (v1.4): `/ban`, `/unban`, `/kick`, `/timeout`, `/warn`, `/warnings`, `/case` và `/purge`, hồ sơ vụ việc đánh số theo máy chủ, kênh nhật ký kiểm duyệt và tin nhắn riêng (tùy chọn) gửi cho người bị xử lý (xem [Kiểm duyệt](#kiểm-duyệt)).
 - Cấp độ (v1.4): thành viên nhận XP khi nhắn tin (tắt cho tới khi người quản lý máy chủ bật), cấp độ theo một đường cong cố định, `/rank`, `/leaderboard` có phân trang, `/xp` cho quản trị viên, thông báo lên cấp và vai trò thưởng (xem [Cấp độ](#cấp-độ)).
+- Web dashboard (v1.4, tùy chọn): trang giới thiệu, đăng nhập bằng Discord và các trang theo từng máy chủ cho cài đặt chung, kiểm duyệt và cấp độ, quy tắc AutoMod của Discord và bảng xếp hạng, cùng trang bảng xếp hạng công khai (phải bật mới có). Xây bằng Next.js và shadcn/ui, có tiếng Anh và tiếng Việt, chạy từ cùng image với bot (xem [Web dashboard](#web-dashboard)).
 - Tự khám phá nhạc: `/autoplay` (tự thêm bài gợi ý khi hết hàng đợi), `/radio` (phát liên tục từ một bài hoặc từ khóa), `/similar` (xem và chọn bài tương tự).
 - Liên kết playlist hoặc YouTube Mix được thêm toàn bộ vào hàng đợi, bắt đầu từ video đã chọn.
 - Khôi phục phiên phát sau khi bot khởi động lại: bot vào lại kênh thoại và phát tiếp hàng đợi.
@@ -138,28 +140,30 @@ npm run build && npm start
 3. Tab **Bot**: chọn **Reset Token** để lấy token, đây là `DISCORD_TOKEN`. Token chỉ hiện một lần, không chia sẻ và không đưa vào git.
 4. Bot dùng intents `Guilds`, `GuildVoiceStates` và (từ v1.4, để tính XP từ tin nhắn) `GuildMessages`. Không intent nào trong số đó là privileged và không cần bật gì trong portal: bot không bao giờ đọc nội dung tin nhắn. **Không bật** bất kỳ Privileged Gateway Intent nào (Presence, Server Members, Message Content).
 5. Để mời bot vào nhiều máy chủ, bật **Public Bot** trong tab **Bot** (mục này đã được bật mặc định với ứng dụng mới; nếu tắt, chỉ chủ ứng dụng mới mời được bot).
+6. Chỉ cho web dashboard (tùy chọn, v1.4): ở tab **OAuth2**, sao chép **Client Secret** (chọn **Reset Secret** để lấy); đây là `DISCORD_CLIENT_SECRET`. Ở mục **Redirects**, thêm đúng `<PUBLIC_URL>/auth/callback` (ví dụ `https://perry.example.com/auth/callback`) và, khi phát triển cục bộ, `http://localhost:3000/auth/callback`. Dashboard chỉ xin người dùng scope `identify` và `guilds`.
 
 ## Liên kết mời bot
 
 Thay `<DISCORD_CLIENT_ID>` bằng Application ID của bạn:
 
 ```
-https://discord.com/oauth2/authorize?client_id=<DISCORD_CLIENT_ID>&scope=bot%20applications.commands&permissions=1101930785798
+https://discord.com/oauth2/authorize?client_id=<DISCORD_CLIENT_ID>&scope=bot%20applications.commands&permissions=1101930785830
 ```
 
 - Scope: `bot applications.commands`.
-- Quyền (permissions = `1101930785798`): View Channels, Send Messages, Embed Links, Connect, Speak, Use Slash Commands, Manage Roles cho hệ thống cấp độ (v1.4: bot cấp và gỡ vai trò thưởng), và cho kiểm duyệt (v1.4):
+- Quyền (permissions = `1101930785830`): View Channels, Send Messages, Embed Links, Connect, Speak, Use Slash Commands, Manage Roles cho hệ thống cấp độ (v1.4: bot cấp và gỡ vai trò thưởng), Manage Server cho web dashboard (v1.4: bot tạo và sửa các quy tắc AutoMod của Discord do nó quản lý), và cho kiểm duyệt (v1.4):
   - Kick Members: `/kick`.
   - Ban Members: `/ban` và `/unban`.
   - Timeout Members (`ModerateMembers`): `/timeout`.
   - Manage Messages: `/purge` xóa tin nhắn của người khác.
   - Read Message History: `/purge` đọc các tin nhắn gần đây của kênh.
-- Giá trị `1101930785798` được tính bằng `PermissionsBitField` của discord.js: các quyền của v1.3 (1024 + 2048 + 16384 + 1048576 + 2097152 + 2147483648 = `2150648832`) cộng thêm 2 + 4 + 1099511627776 + 8192 + 65536 cho kiểm duyệt và 268435456 (Manage Roles) cho hệ thống cấp độ.
+- Giá trị `1101930785830` được tính bằng `PermissionsBitField` của discord.js: các quyền của v1.3 (1024 + 2048 + 16384 + 1048576 + 2097152 + 2147483648 = `2150648832`) cộng thêm 2 + 4 + 1099511627776 + 8192 + 65536 cho kiểm duyệt, 268435456 (Manage Roles) cho hệ thống cấp độ và 32 (Manage Server) cho các quy tắc AutoMod của dashboard.
+- Khi thiếu Manage Server, tab AutoMod của dashboard báo không khả dụng; các phần khác vẫn hoạt động.
 - Máy chủ đã thêm bot trước v1.4: vai trò của bot không tự nhận quyền mới. Mở lại liên kết mới (chưa kiểm chứng việc cấp quyền lại có cập nhật vai trò của bot hay không) hoặc tự cấp các quyền đó cho vai trò của bot. Vai trò của bot cũng phải nằm trên các thành viên mà bot cần xử lý và trên mọi vai trò thưởng cấp độ (Cài đặt máy chủ > Vai trò).
 
 ## Cấu hình `.env`
 
-Cách nhanh: `./scripts/setup.sh` tạo `.env` từ `.env.example`, hỏi token và Application ID, tự sinh mật khẩu và điền sẵn `DATABASE_URL` / `REDIS_URL` cho chế độ chạy trên máy host. Chạy lại an toàn (không ghi đè giá trị đã có); khi `.env.example` có khóa mới, script tự thêm vào `.env` hiện có.
+Cách nhanh: `./scripts/setup.sh` tạo `.env` từ `.env.example`, hỏi token và Application ID (với `--web` hỏi thêm `PUBLIC_URL` và `DISCORD_CLIENT_SECRET`), tự sinh mật khẩu và `SESSION_SECRET`, và điền sẵn `DATABASE_URL` / `REDIS_URL` cho chế độ chạy trên máy host. Chạy lại an toàn (không ghi đè giá trị đã có); khi `.env.example` có khóa mới, script tự thêm vào `.env` hiện có.
 
 Cách thủ công:
 
@@ -191,7 +195,7 @@ Chỉnh `.env` (tệp này đã nằm trong `.gitignore`, không bao giờ commi
 | `REDIS_PASSWORD`              | Có\*     | Mật khẩu Redis, chỉ Docker Compose đọc; phải khớp với `REDIS_URL`.                                                                                                                                                                      |
 | `POSTGRES_PORT`               | Không    | Cổng PostgreSQL trên `127.0.0.1` (mặc định `5432`), chỉ `docker-compose.dev.yml` đọc. Đổi nếu bị trùng và sửa `DATABASE_URL` theo.                                                                                                      |
 | `REDIS_PORT`                  | Không    | Cổng Redis trên `127.0.0.1` (mặc định `6379`), chỉ `docker-compose.dev.yml` đọc. Đổi nếu bị trùng và sửa `REDIS_URL` theo.                                                                                                              |
-| `BOT_IMAGE`                   | Không    | Để trống: build image từ mã nguồn. Đặt (ví dụ `ghcr.io/<chủ-sở-hữu>/<kho>:1.3.0`) để `deploy.sh`/`update.sh` pull image dựng sẵn. Chỉ Docker Compose và script đọc.                                                                     |
+| `BOT_IMAGE`                   | Không    | Để trống: build image từ mã nguồn. Đặt (ví dụ `ghcr.io/<chủ-sở-hữu>/<kho>:1.4.0`) để `deploy.sh`/`update.sh` pull image dựng sẵn. Chỉ Docker Compose và script đọc.                                                                     |
 | `AUTO_MIGRATE`                | Không    | `true` để bot tự chạy migration khi khởi động (khóa advisory của PostgreSQL chống chạy song song). Mặc định `true` trong image/compose, `false` khi chạy `npm start`.                                                                   |
 | `REGISTER_COMMANDS_ON_START`  | Không    | `true` để bot tự đăng ký lệnh slash khi sẵn sàng, chỉ khi định nghĩa lệnh đổi. Mặc định `true` trong image/compose, `false` khi chạy `npm start`.                                                                                       |
 | `REGISTER_COMMANDS_FORCE`     | Không    | `true` để bỏ qua so sánh hash và luôn đăng ký lại lệnh khi khởi động. Mặc định `false`.                                                                                                                                                 |
@@ -214,10 +218,19 @@ Chỉnh `.env` (tệp này đã nằm trong `.gitignore`, không bao giờ commi
 | `YOUTUBE_OAUTH_REFRESH_TOKEN` | Không    | Dùng khi bật OAuth cho YouTube (xem bên dưới).                                                                                                                                                                                          |
 | `YOUTUBE_PO_TOKEN`            | Không    | Dùng khi bật poToken cho YouTube.                                                                                                                                                                                                       |
 | `YOUTUBE_VISITOR_DATA`        | Không    | Đi cùng `YOUTUBE_PO_TOKEN`.                                                                                                                                                                                                             |
+| `COMPOSE_PROFILES`            | Không    | `web` để chạy web dashboard cùng stack (`./scripts/setup.sh --web` đặt giúp). Để trống: chỉ bot. Docker Compose và script đọc. |
+| `PUBLIC_URL`                  | Có\*\*\* | Địa chỉ công khai của dashboard: một origin không có đường dẫn hay dấu `/` ở cuối, `https://` (được kèm cổng 1-65535), hoặc `http://` chỉ cho `localhost`, `127.0.0.1` và `[::1]` khi phát triển. Redirect OAuth2 là `<PUBLIC_URL>/auth/callback`. |
+| `DISCORD_CLIENT_SECRET`       | Có\*\*\* | Client secret OAuth2 (Developer Portal > OAuth2), 16-128 ký tự `[A-Za-z0-9_-]`. |
+| `SESSION_SECRET`              | Có\*\*\* | 32-256 ký tự; khóa mã hóa token Discord trong phiên được dẫn xuất từ nó. `setup.sh` sinh 64 ký tự hex. Đổi giá trị này sẽ đăng xuất mọi người. |
+| `WEB_PORT`                    | Không    | Cổng trên `127.0.0.1` cho reverse proxy (mặc định `3000`); là cổng lắng nghe khi web chạy trên máy host. |
+| `WEB_TRUST_PROXY`             | Không    | Địa chỉ proxy được bỏ qua trong `X-Forwarded-For` khi web tìm địa chỉ IP của client (giới hạn tần suất): danh sách cách nhau bằng dấu phẩy gồm `loopback`, `linklocal`, `uniquelocal`, địa chỉ IP và CIDR (mặc định `loopback,uniquelocal`). |
+| `WEB_HOST`                    | Không    | Địa chỉ lắng nghe khi web chạy trên máy host (mặc định `127.0.0.1`); container luôn lắng nghe `0.0.0.0` trong mạng của nó. |
 
 \* Bắt buộc cho stack Docker (`docker-compose.yml`) và `docker-compose.dev.yml --profile storage`. Với `STORAGE_DRIVER=memory` chạy trên máy host chỉ cần các biến Lavalink.
 
 \*\* Chỉ cần khi bot chạy trực tiếp trên máy host (`npm run dev` / `npm start`). `docker-compose.yml` bỏ qua các biến này và tự đặt host, URL theo tên dịch vụ trong mạng riêng của Docker.
+
+\*\*\* Bắt buộc khi bật web dashboard (`COMPOSE_PROFILES=web`) hoặc chạy web trên máy host (`npm run web:dev`, `npm run web:start`). Bot không đọc các biến này.
 
 Ngoài ra image Docker đặt sẵn `HEARTBEAT_FILE=/tmp/perry-heartbeat`: bot ghi dấu thời gian vào tệp này mỗi 15 giây khi đã kết nối Discord, và `HEALTHCHECK` của image đọc nó (`node dist/healthcheck.js`, tệp phải mới hơn 60 giây). Biến này không cần đặt trong `.env`; để trống thì bot không ghi tệp nào.
 
@@ -382,7 +395,7 @@ npm run build && npm start
 npm run dev
 ```
 
-Kiểm tra tĩnh: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check-commands`. Kiểm thử đơn vị (v1.4): `npm test` chạy các tệp `src/**/*.test.ts` bằng `node:test` có sẵn của Node thông qua `tsx`; chúng không cần Docker hay mạng, và `npm run build` không đưa chúng vào `dist/`.
+Kiểm tra tĩnh: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check-commands`. Kiểm thử đơn vị (v1.4): `npm test` chạy các tệp `src/**/*.test.ts` và `web/**/*.test.ts` bằng `node:test` có sẵn của Node thông qua `tsx`; chúng không cần Docker hay mạng, và `npm run build` không đưa chúng vào `dist/`. Web có các bước kiểm tra riêng, xem [Phát triển cục bộ](#phát-triển-cục-bộ).
 
 ## Danh sách lệnh
 
@@ -479,7 +492,7 @@ v1.4 thêm các lệnh kiểm duyệt. Mọi câu trả lời của chúng chỉ
 - `/purge`: xét 100 tin nhắn gần nhất của kênh hoặc chủ đề (thread) hiện tại và xóa tối đa `amount` (1-100) tin, có thể chỉ của một người dùng. Tin nhắn đã ghim và tin cũ hơn 14 ngày được bỏ qua. Mỗi lần dọn ghi một mục vào nhật ký kiểm duyệt nhưng không tạo vụ.
 - Nhật ký kiểm tra (audit log): bot đặt lý do trong nhật ký kiểm tra của Discord là `<người kiểm duyệt>: <lý do>`.
 - Khi PostgreSQL không khả dụng: `/ban`, `/unban`, `/kick` và `/timeout` vẫn chạy và câu trả lời báo vụ chưa được lưu; `/warn`, `/warnings` và `/case` báo hồ sơ tạm thời không khả dụng. Với `STORAGE_DRIVER=memory`, hồ sơ chỉ giữ tới khi bot khởi động lại.
-- Bot không lọc nội dung tin nhắn. Việc quản lý quy tắc AutoMod của chính Discord được lên kế hoạch cho web dashboard.
+- Bot không tự lọc nội dung tin nhắn. AutoMod của chính Discord làm việc đó, và web dashboard quản lý bốn quy tắc AutoMod cho bot (từ cấm, liên kết mời, spam nhắc tên và các danh sách từ khóa có sẵn của Discord); xem [Web dashboard](#web-dashboard).
 
 ## Cấp độ
 
@@ -497,9 +510,57 @@ v1.4 thêm XP và cấp độ. Hệ thống cấp độ tắt ở mọi máy ch�
 - `/xp add|remove user amount` (1-1.000.000), `/xp set user xp` (0-2.000.000.000) và `/xp reset user` (cần Manage Server; chỉ bạn thấy câu trả lời) thay đổi XP của một thành viên. Cấp độ đi theo XP, kể cả khi giảm, và vai trò thưởng được cập nhật. Các thay đổi này không bao giờ được thông báo.
 - Thông báo lên cấp: `/settings leveling announce` gửi tới `Kênh của tin nhắn` (mặc định), `Kênh đã cấu hình` (đặt bằng tùy chọn `channel`; chỉ chọn `channel` cũng là chọn chế độ này; khi bot không gửi được vào đó thì dùng kênh của tin nhắn), `Tin nhắn riêng` hoặc không gửi (`Tắt`). Bot từ chối `channel` mà nó không gửi được embed (Xem kênh, Gửi tin nhắn, Nhúng liên kết). Thông báo nhắc tên thành viên mà không ping và dùng ngôn ngữ của máy chủ; lên nhiều cấp một lúc chỉ được thông báo một lần.
 - Vai trò thưởng: tối đa 25 phần thưởng, mỗi cấp một vai trò (cấp 1-1000). Ở chế độ `stack` (mặc định) thành viên giữ mọi phần thưởng tới cấp của mình; ở chế độ `highest` chỉ giữ phần thưởng của cấp cao nhất đã đạt. Phần thưởng được áp dụng khi lên cấp và sau `/xp`. Bot cần quyền Manage Roles và vai trò của bot phải nằm trên mọi vai trò thưởng; vai trò do tích hợp quản lý và vai trò không thấp hơn vai trò của bot bị bỏ qua và được ghi log một lần.
-- Cài đặt không có lệnh slash: hệ số XP, kênh và vai trò bị bỏ qua, vai trò thưởng và chế độ của chúng, cùng trang bảng xếp hạng công khai được đặt trong web dashboard. Không có dashboard thì chúng giữ giá trị mặc định (100 %, không bỏ qua gì, không có phần thưởng, không có bảng xếp hạng công khai).
+- Cài đặt không có lệnh slash: hệ số XP, kênh và vai trò bị bỏ qua, vai trò thưởng và chế độ của chúng, cùng trang bảng xếp hạng công khai được đặt trong [web dashboard](#web-dashboard). Không có dashboard thì chúng giữ giá trị mặc định (100 %, không bỏ qua gì, không có phần thưởng, không có bảng xếp hạng công khai).
 - Xóa một kênh hoặc vai trò sẽ gỡ nó khỏi cài đặt cấp độ, và xóa một vai trò thưởng sẽ xóa phần thưởng đó. Khi bot bị xóa khỏi một máy chủ, vai trò thưởng bị xóa cùng cài đặt; XP của thành viên (và hồ sơ kiểm duyệt) được giữ lại.
 - Khi PostgreSQL không khả dụng: tin nhắn không nhận XP trong thời gian đó (không xếp hàng chờ), và `/rank`, `/leaderboard`, `/xp` báo dữ liệu cấp độ tạm thời không khả dụng. Với `STORAGE_DRIVER=memory`, XP chỉ giữ tới khi bot khởi động lại.
+
+## Web dashboard
+
+v1.4 thêm một trang web tùy chọn cho người quản lý máy chủ, xây bằng Next.js 16 (App Router) và shadcn/ui trên Tailwind CSS 4. Nó chạy thành dịch vụ `web` từ cùng image với bot và tắt cho tới khi bạn bật. Mọi trang đều có tiếng Anh và tiếng Việt: ngôn ngữ lấy theo nút chuyển ngôn ngữ ở đầu trang (lưu trong cookie `perry_lang`), rồi ngôn ngữ của trình duyệt, rồi `DEFAULT_LOCALE`.
+
+Các trang:
+
+- `/`: trang giới thiệu với các tính năng, liên kết mời bot và nút đăng nhập.
+- `/dashboard`: sau khi đăng nhập bằng Discord, danh sách máy chủ bạn quản lý được (bạn là chủ, hoặc có quyền Administrator hay Manage Server ở đó). Máy chủ chưa có bot hiện nút mời bot với máy chủ đó được chọn sẵn.
+- `/dashboard/<ID máy chủ>`: mỗi khu vực một tab. Thay đổi đã lưu tới bot trong vòng 5 giây.
+  - Chung: ngôn ngữ, vai trò DJ, âm lượng mặc định, autoplay và chế độ của nó, chế độ 24/7.
+  - Kiểm duyệt: kênh nhật ký kiểm duyệt và tin nhắn riêng gửi cho người bị xử lý.
+  - Cấp độ: bật hoặc tắt, hệ số XP (10-500 %), thông báo lên cấp và kênh của chúng, kênh và vai trò bị bỏ qua, chế độ thưởng, tối đa 25 vai trò thưởng, và công tắc bảng xếp hạng công khai.
+  - AutoMod: bốn quy tắc AutoMod của Discord do bot sở hữu: từ cấm (tối đa 1000 từ khóa và 100 từ được phép), liên kết mời, spam nhắc tên (giới hạn số lần nhắc và chống raid tùy chọn) và các danh sách từ khóa có sẵn của Discord (chửi thề, nội dung tình dục, lời lẽ miệt thị). Mỗi quy tắc chặn tin nhắn, có thể gửi cảnh báo vào một kênh và, trừ danh sách có sẵn, hạn chế (timeout) thành viên; có thể miễn trừ vai trò và kênh. Bot chỉ sửa các quy tắc do nó tạo (tên `Perry: ...`) và không bao giờ đụng tới quy tắc khác. Discord áp dụng thay đổi ngay. Tab này cần bot có quyền Manage Server.
+  - Bảng xếp hạng: bảng xếp hạng XP, 25 thành viên mỗi trang.
+- `/leaderboard/<ID máy chủ>`: bảng xếp hạng công khai (25 thành viên mỗi trang, tối đa 40 trang), chỉ khi người quản lý đang bật nó. Không cần đăng nhập và xem được khi tắt JavaScript.
+- `/healthz`: `{"status":"ok"}` khi PostgreSQL và Redis trả lời, nếu không thì 503; healthcheck của container dùng đường dẫn này.
+
+### Bật dashboard
+
+1. Trong Developer Portal, sao chép client secret và thêm redirect (bước 6 của [Tạo ứng dụng bot](#tạo-ứng-dụng-bot-và-lấy-token)).
+2. Chạy `./scripts/setup.sh --web`. Script hỏi `PUBLIC_URL` (địa chỉ người dùng mở, ví dụ `https://perry.example.com`) và `DISCORD_CLIENT_SECRET` (nhập ẩn), sinh `SESSION_SECRET`, thêm `web` vào `COMPOSE_PROFILES` và in redirect cần thêm. Chạy tự động: `PUBLIC_URL=... DISCORD_CLIENT_SECRET=... ./scripts/setup.sh --non-interactive --web`.
+3. `make up` (hoặc `./scripts/deploy.sh`) build image, chạy stack kèm `web` và chờ tới khi nó khỏe. Web chỉ được publish trên `127.0.0.1:3000` (`WEB_PORT` đổi cổng phía máy chủ).
+4. Đặt một reverse proxy có HTTPS phía trước: xem ví dụ Caddy và nginx trong [docs/DEPLOY.vi.md](docs/DEPLOY.vi.md#7-web-dashboard-sau-reverse-proxy).
+5. `./scripts/doctor.sh` in thêm các hàng `env web`, `public url`, `session secret`, `container web`, `web health` và `web bridge`.
+
+### Cách dashboard hoạt động
+
+- Đăng nhập: Discord OAuth2 với scope `identify` và `guilds`. Phiên được giữ trong Redis tối đa 7 ngày, hoặc tới khi token Discord hết hạn nếu sớm hơn; sau đó bạn đăng nhập lại (refresh token không được giữ). Trình duyệt chỉ giữ một mã phiên ngẫu nhiên trong cookie HttpOnly, SameSite=Lax (`__Host-perry_sid` khi dùng https), và Redis chỉ lưu mã băm SHA-256 của nó. Access token Discord được mã hóa bằng AES-256-GCM với khóa dẫn xuất từ `SESSION_SECRET`, nên đổi `SESSION_SECRET` sẽ đăng xuất mọi người. Đăng xuất xóa phiên và thu hồi token.
+- Quyền: web đọc danh sách máy chủ của bạn từ Discord bằng token của bạn và lưu đệm 60 giây. Mỗi trang và mỗi lần lưu đều kiểm tra lại rằng bạn là chủ máy chủ hoặc có Administrator hay Manage Server ở đó, và bot đang ở trong máy chủ đó.
+- Web không bao giờ giữ token của bot. Nó đọc và ghi cài đặt, cấp độ và vai trò thưởng trong PostgreSQL. Qua Redis, nó hỏi bot danh sách kênh và vai trò của máy chủ (lưu đệm 60 giây; nút làm mới tải lại) và nhờ bot thay đổi quy tắc AutoMod. Bot đăng danh sách máy chủ của nó lên Redis mỗi 60 giây và 2 giây sau khi vào hoặc rời một máy chủ.
+- Lưu: web ghi PostgreSQL và xóa bản cài đặt bot đang lưu đệm trong Redis. Bot dùng giá trị mới trong vòng 5 giây, hoặc ngay lập tức với `PUBSUB_INVALIDATION=true`. Vai trò thưởng áp dụng ở lần lên cấp hoặc lần đổi `/xp` tiếp theo.
+- Khi bot đang dừng, hoặc hơn 180 giây sau khi bot bị sập, các trang dashboard hiện "Tạm thời không khả dụng" và API trả 503 `bot_unavailable`. Trang giới thiệu, đăng nhập và đăng xuất vẫn hoạt động.
+- Giới hạn tần suất: 20 lần đăng nhập mỗi 10 phút cho mỗi địa chỉ IP; mỗi người dùng 120 lệnh gọi API, 30 lần lưu và 6 lần làm mới kênh và vai trò mỗi phút; 60 lượt xem bảng xếp hạng công khai mỗi phút cho mỗi địa chỉ IP. Địa chỉ IP của client lấy từ `X-Forwarded-For` (xem `WEB_TRUST_PROXY`).
+
+### Phát triển cục bộ
+
+```bash
+make dev-infra            # PostgreSQL, Redis và Lavalink trên 127.0.0.1
+npm run db:migrate
+npm run dev               # bot, ở terminal thứ nhất
+npm run web:dev           # web ở http://localhost:3000, ở terminal thứ hai
+```
+
+- `.env` cần `PUBLIC_URL=http://localhost:3000`, `DISCORD_CLIENT_SECRET` và `SESSION_SECRET` (`./scripts/setup.sh --web` hỏi hai biến đầu và sinh biến thứ ba), và Developer Portal cần redirect `http://localhost:3000/auth/callback`. Khi phát triển, web đọc `.env` của kho mã giống bot, nên cả hai dùng chung `DATABASE_URL`, `REDIS_URL` và `REDIS_KEY_PREFIX`.
+- `next dev` lắng nghe trên mọi giao diện mạng; `npm run web:dev -- --hostname 127.0.0.1` giữ nó trong máy này. Khi phát triển, CSP còn cho phép `'unsafe-eval'` vì Next.js cần.
+- Bản build production trên máy host: `npm run web:build` rồi `npm run web:start`. Server standalone lắng nghe ở `WEB_HOST:WEB_PORT` (mặc định `127.0.0.1:3000`) và không đọc `.env`, nên hãy export các biến trước.
+- Kiểm tra: `npm run web:typecheck`, `npm run lint` (bao gồm cả `web/`), `npm test` (chạy cả `web/**/*.test.ts`), `npm run web:build` và `npm run web:check`. `web:check` quét mã nguồn web và kết quả build, báo lỗi nếu bundle web nhắc tới `DISCORD_TOKEN`, chứa discord.js hay client Lavalink, có Server Actions, `dangerouslySetInnerHTML`, hoặc mã trình duyệt chứa gói chỉ dành cho server hay bí mật.
 
 ## Ngôn ngữ
 
@@ -524,6 +585,11 @@ v1.4 thêm XP và cấp độ. Hệ thống cấp độ tắt ở mọi máy ch�
 - **Giới hạn của bộ lọc SSRF**: bộ lọc chỉ kiểm tra tên máy chủ (host) ghi trong liên kết. Nó không phân giải DNS (một tên miền trỏ tới địa chỉ nội bộ vẫn lọt qua) và không theo dõi chuyển hướng (redirect). Nếu chạy bot công khai, hãy thêm giới hạn ở tầng mạng cho container Lavalink (chặn egress tới dải IP nội bộ, link-local và metadata đám mây).
 - PostgreSQL và Redis đều yêu cầu mật khẩu (và không được publish trong stack production). Chuỗi kết nối, mật khẩu và `LASTFM_API_KEY` được che khỏi log và lỗi. `PLAY_HISTORY=true` lưu ID người yêu cầu từng bài; chỉ bật khi cần và nêu rõ với người dùng.
 - Bot không mở cổng HTTP nào; chỉ kết nối đi ra tới Discord và Lavalink. Kiểm tra sức khỏe của container dùng tệp heartbeat chứ không dùng cổng mạng.
+- Web dashboard (v1.4, tùy chọn): dịch vụ `web` publish một cổng, chỉ bind `127.0.0.1` (`WEB_PORT`, mặc định 3000), cho một reverse proxy trên cùng máy chủ phục vụ HTTPS. Cổng do Docker publish bỏ qua `ufw`, nhưng máy khác không tới được cổng bind `127.0.0.1`. `doctor.sh` báo FAIL ở hàng `published ports` với bất kỳ cổng publish nào khác. Container web chạy giống bot: user `node`, hệ tệp gốc chỉ đọc, `cap_drop: ALL`, `no-new-privileges`, và chỉ ở mạng `data`.
+- Web không giữ token của bot: `DISCORD_TOKEN` không được truyền cho nó, và `npm run web:check` báo lỗi nếu mã hoặc bundle web nhắc tới token này hay chứa discord.js. Để đọc kênh và vai trò của máy chủ hoặc đổi quy tắc AutoMod, web gửi yêu cầu cho bot qua Redis. Bot chỉ trả lời các yêu cầu này (dữ liệu máy chủ, liệt kê quy tắc AutoMod, lưu một quy tắc AutoMod) và chỉ đụng tới quy tắc AutoMod do nó tạo. Ai ghi được vào Redis đều gửi được các yêu cầu đó, nên hãy giữ Redis trong mạng nội bộ và có mật khẩu, như stack compose đang làm.
+- Content Security Policy của web: script chỉ chạy khi có nonce thay đổi theo từng phản hồi (`script-src 'self' 'nonce-...' 'strict-dynamic'`), nên `<script>` hay trình xử lý sự kiện nội tuyến bị chèn vào sẽ không chạy. Style cho phép `'unsafe-inline'`, vì các component Radix/shadcn và trang lỗi của Next.js render thuộc tính `style` nội tuyến ở phía server; thiếu nó, popover và ô select gốc bị ẩn sẽ hiển thị sai vị trí hoặc lộ ra. Cái giá là CSS bị chèn vào sẽ có tác dụng, nhưng muốn vậy trước hết phải chèn được HTML, điều mà cơ chế escape của React ngăn. Web còn gửi `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` và chính sách referrer chặt; HSTS để reverse proxy đặt.
+- Mọi thay đổi (POST, PUT, PATCH, DELETE) cần CSRF token của phiên và `Origin` (hoặc `Referer`) khớp `PUBLIC_URL`. Thân yêu cầu bị giới hạn kích thước và kiểm tra chặt (trường lạ bị từ chối), bước kiểm tra quyền chạy ở mọi trang và mọi lệnh gọi API, và Server Actions không được dùng.
+- Ô chọn kênh và vai trò của dashboard liệt kê mọi kênh bot thấy được, kể cả kênh riêng tư mà người quản lý có thể không mở được trong Discord. Người quản lý được tin cậy với các tên này; chỉ cấp Manage Server cho người bạn tin cậy với chúng.
 - Intents tối thiểu: `Guilds`, `GuildVoiceStates` và `GuildMessages` (không cái nào là privileged; nội dung tin nhắn không được đọc).
 
 ## Hạn chế đã biết
@@ -534,10 +600,11 @@ v1.4 thêm XP và cấp độ. Hệ thống cấp độ tắt ở mọi máy ch�
 - **Cài đặt và hàng đợi**: cài đặt được lưu bền vững khi dùng `persistent`; hàng đợi chỉ được khôi phục theo các điều kiện ở phần "Khôi phục sau khi khởi động lại". Trạng thái `/radio` chỉ nằm trong bộ nhớ và mất khi bot khởi động lại. Mất node Lavalink (trong khi bot vẫn chạy) không khôi phục hàng đợi.
 - **Gợi ý nhạc**: `lastfm` cần khóa API và `lavasrc` cần thông tin xác thực của dịch vụ tương ứng; khi thiếu, chuỗi nguồn chỉ còn `ytmix` và `artist`. Chất lượng YouTube Mix có thể thay đổi theo YouTube.
 - **Nhiều tiến trình**: cooldown và giới hạn tần suất dùng Redis nên dùng chung được, nhưng chưa kiểm chứng việc chạy nhiều tiến trình.
-- **Chế độ 24/7**: có trong mã nhưng chưa có lệnh bật; mặc định tắt.
+- **Chế độ 24/7**: không có lệnh slash; bật trong web dashboard (tab Chung). Mặc định tắt.
 - **Một node Lavalink**: chỉ dùng một node, chưa cân bằng tải nhiều node.
 - **Kiểm duyệt**: chỉ hành động làm qua lệnh của bot mới được ghi lại; cấm, đuổi hay hạn chế bằng menu của chính Discord không tạo vụ và không ghi nhật ký kiểm duyệt. `/purge` chỉ xét 100 tin nhắn gần nhất và không xóa được tin cũ hơn 14 ngày. Không có cấm tạm thời và không tự xử phạt sau một số lần cảnh cáo.
 - **Cấp độ**: không cộng XP khi PostgreSQL không khả dụng (không xếp hàng chờ); trình lưu trữ `memory` chỉ giữ XP tới khi bot khởi động lại. Không có XP theo kênh thoại, không có thẻ hạng dạng ảnh, XP không giảm dần theo thời gian và không có lệnh đặt lại XP cả máy chủ. Hệ số XP, danh sách bỏ qua và vai trò thưởng chỉ đổi được trong web dashboard.
+- **Web dashboard**: việc mất quyền Manage Server trong Discord có thể mất tới 60 giây mới tới dashboard (danh sách máy chủ được lưu đệm). Cầu nối giả định chỉ có một tiến trình bot. Tắt 24/7 khi bot đang ở không trong một kênh chỉ có tác dụng ở sự kiện thoại hoặc hàng đợi tiếp theo (có người vào hoặc rời kênh, một bài kết thúc), và đổi ngôn ngữ chỉ render lại tin nhắn "Đang phát" đang hiện ở lần cập nhật tiếp theo của nó. Toàn bộ dashboard trả 503 `bot_unavailable` khi bot đang dừng hoặc hơn 180 giây sau khi bot bị sập (trang giới thiệu và đăng nhập vẫn hoạt động). Đồng hồ của bot và web phải lệch nhau không quá khoảng 1 giây, vì bot bỏ các yêu cầu cầu nối đã quá hạn; chạy trên cùng một máy như stack compose thì không sao. Web phụ thuộc trình build webpack của Next.js (`--webpack`), vì Turbopack không ánh xạ được các import `.js` của mã bot sang tệp `.ts`.
 - Bandcamp và Twitch chỉ nhận liên kết (không có tìm kiếm). Kênh Stage chưa được hỗ trợ.
 - `bcsearch:` không phải tính năng của Lavalink nên không có tìm kiếm Bandcamp.
 
@@ -614,7 +681,20 @@ Chưa được kiểm chứng ở v1.4 (cấp độ):
 
 Đã kiểm chứng ở v1.4 (cấp độ; không có token Discord thật, container PostgreSQL 18.6 / Redis 8.8.3 dùng một lần): `npm run typecheck`, `lint`, `build`, `check-commands` (38 lệnh) và `npm test` đạt; 26 lệnh hiện có ngoài `/settings` được tuần tự hóa y hệt trước đây và `/settings` chỉ thêm `mod-log`, `mod-dm` và `leveling`; `/leaderboard page` giới hạn 1-10.000 và các tùy chọn của `/xp` giới hạn 1-1.000.000 và 0-2.000.000.000; migration `0003_leveling` áp dụng được trên cơ sở dữ liệu trống và trên cơ sở dữ liệu chỉ có `0000`-`0002` (4 dòng trong `drizzle.__drizzle_migrations`), và ràng buộc của nó từ chối XP âm và một vai trò thưởng dùng hai lần; công thức XP khớp bảng cấp độ (công thức đóng bằng tổng cộng dồn tới cấp 1100); 50 lần cộng XP song song cho một thành viên cộng đúng tổng và báo mỗi lần lên cấp một lần; cộng XP chạy đua với `/xp set 0`, và `/xp add` cho thành viên chưa có dòng dữ liệu chạy đua với 20 lần cộng XP, không bao giờ để cấp độ vượt quá XP, không bao giờ lỗi và không bao giờ đánh dấu PostgreSQL không khả dụng; với 50.000 thành viên mẫu, truy vấn trang bảng xếp hạng đọc `member_levels_guild_xp_idx` mà không cần sắp xếp và mọi thứ hạng bằng vị trí trên bảng xếp hạng, kể cả khi bằng XP; xóa song song các kênh và vai trò bị bỏ qua (cả khi PostgreSQL không khả dụng, và với giá trị do tiến trình khác ghi) không để lại ID đã xóa; mục cài đặt trong Redis của v1.3 và của bản v1.4 trước đó đọc được với giá trị mặc định của cấp độ; `BotClient` dựng với cấu hình giả yêu cầu đúng `Guilds`, `GuildVoiceStates` và `GuildMessages`; bộ xử lý tin nhắn, `/rank`, `/leaderboard`, `/xp` và `/settings leveling` hoạt động như mô tả ở trên với đối tượng Discord giả; bot đã build khởi động ngoại tuyến áp dụng 4 migration và dừng ở đúng một dòng `Login failed`.
 
-Khuyến nghị thử nhanh trên một máy chủ thật: `/play never gonna give you up`, `/pause`, `/resume`, `/skip`, `/queue` và các nút trên tin nhắn "Đang phát"; sau đó `/settings mod-log`, `/warn` và `/case view` với một thành viên thử; sau đó `/settings leveling enabled:true`, vài tin nhắn cách nhau một phút, `/rank` và `/leaderboard`.
+Chưa được kiểm chứng ở v1.4 (web dashboard):
+
+- Đăng nhập Discord thật: màn hình đồng ý, đổi mã lấy token, `/users/@me`, danh sách máy chủ của người dùng và thu hồi token với Discord. Không có client secret; luồng này chạy với một bản giả lập cục bộ của các endpoint Discord đó.
+- Dữ liệu máy chủ thật trong các ô chọn, và cầu nối Redis với bot đã kết nối gateway Discord (phía bot của cầu nối chạy với đối tượng Discord giả).
+- Tạo, sửa và tắt quy tắc AutoMod trong máy chủ thật, và cách Discord áp dụng chúng.
+- Mời lại bot để thêm Manage Server cho vai trò của bot ở máy chủ đã có bot.
+- Các ví dụ reverse proxy (Caddy, nginx) trên máy chủ thật với chứng chỉ thật và HSTS.
+- Trình duyệt khác Chrome headless trên macOS (dùng để chụp màn hình và kiểm tra CSP), và thiết bị di động thật.
+- Web trong image `linux/amd64` trên máy amd64 thật (chỉ qua giả lập), và các binding build glibc x64 của Next.js, Tailwind và lightningcss, lần đầu chạy trong CI.
+- Các bước web mới của `ci.yml` trên GitHub Actions (chỉ chạy lại cục bộ).
+
+Đã kiểm chứng ở v1.4 (web dashboard; không có thông tin xác thực Discord thật, container PostgreSQL 18.6 / Redis 8.8.3 dùng một lần, Docker 27.5.1 trên macOS arm64): `npm run typecheck`, `lint`, `build`, `check-commands`, `npm test`, `web:typecheck`, `web:build` và `web:check` đạt, kể cả từ cây mã chưa có tệp sinh ra; một route web import mã bot phụ thuộc discord.js làm build thất bại; workspace npm thêm gói vào lockfile mà không đổi gói nào đã có; kết quả standalone nặng khoảng 33 MB, không có source map, sharp, discord.js hay token bot, và thêm 40 MB vào image (241 MB trên arm64, 246 MB trên amd64 build qua giả lập); container web chạy uid 1000 trên hệ tệp gốc chỉ đọc không lỗi ghi và chỉ được publish trên `127.0.0.1`; `/healthz`, trang giới thiệu, chuyển ngôn ngữ (cookie, `?lang`, `Accept-Language`), CSP với nonce mới trên mọi script, các header tĩnh, 404 cho tệp ngoài `public/`, yêu cầu Server Action và path traversal; luồng OAuth với bản giả lập Discord cục bộ (cookie state, state dùng một lần, mã sai dạng, token đã mã hóa trong Redis, thời hạn phiên, đăng xuất, `SESSION_SECRET` bị đổi), giới hạn tần suất đăng nhập (429 kèm `Retry-After`); CSRF (thiếu hoặc sai token, `Origin` lạ), giới hạn thân yêu cầu (415, 413 cả với thân chunked, schema chặt), 403 cho máy chủ người dùng không quản lý được và 404 kèm liên kết mời khi thiếu bot; mọi trang dashboard ở cả hai ngôn ngữ; ghi cài đặt (dòng PostgreSQL, khóa Redis bị xóa, tin pub/sub, lần xóa thứ hai sau đó), lan tới kho cài đặt của bot đang chạy trong 5 ms khi có pub/sub và trong vòng 5 giây khi không có; kiểm tra kênh, vai trò và vai trò thưởng (không tồn tại, sai loại, bot không gửi được, vai trò do tích hợp quản lý hoặc quá cao, 25 vai trò thưởng, cấp trùng, ID cũ bị bỏ); 20 vòng lưu vai trò thưởng đồng thời từ bot và web, mỗi vòng chỉ một bên thắng; các trang bảng xếp hạng, bảng xếp hạng công khai (404 khi tắt, cache 30 giây, bị xóa khi tắt); tạo, sửa, tắt và liệt kê AutoMod qua cầu nối, và thân 175 KB chứa 1000 từ khóa tiếng Việt; 503 `bot_unavailable` trong 15 ms khi không có bot lắng nghe và khi thiếu danh sách máy chủ, thông báo "Tạm thời không khả dụng" và các phản hồi 503 khi Redis ngừng, hồi phục sau 2 giây; khởi động khi thiếu biến (thoát mã 1, chỉ in tên); `setup.sh --web`, `doctor.sh`, `deploy.sh` và `restore.sh` với profile web; `docker compose --profile web config` và build; 9 trang chụp bằng Chrome headless không có thông báo console nào và không vi phạm CSP; không có bí mật, token, mã phiên hay CSRF token trong log nào.
+
+Khuyến nghị thử nhanh trên một máy chủ thật: `/play never gonna give you up`, `/pause`, `/resume`, `/skip`, `/queue` và các nút trên tin nhắn "Đang phát"; sau đó `/settings mod-log`, `/warn` và `/case view` với một thành viên thử; sau đó `/settings leveling enabled:true`, vài tin nhắn cách nhau một phút, `/rank` và `/leaderboard`; sau đó đăng nhập dashboard, đổi âm lượng mặc định và kiểm tra bằng `/settings view`.
 
 ## Lưu ý pháp lý
 
@@ -652,6 +732,7 @@ src/
   events/             Sự kiện Discord (ready, guildDelete, guildRoleDelete, channelDelete, messageCreate, interaction, voice state)
   moderation/         Kiểm duyệt: kiểm tra mục tiêu, thời lượng, giới hạn, luồng xử lý, nhật ký kiểm duyệt, kiểm tra quyền
   leveling/           Cấp độ: công thức XP, quy tắc tính XP, chênh lệch vai trò thưởng, bộ xử lý tin nhắn (leveling-service.ts)
+  bridge/             Phía bot của cầu nối Redis tới web: dữ liệu máy chủ, quy tắc AutoMod của Discord, xử lý yêu cầu
   interactions/       Xử lý lệnh, nút bấm, autocomplete, cooldown
   music/              Lavalink, hàng đợi, kiểm tra điều kiện, điều khiển, tìm kiếm, lời bài hát
     discovery/        Engine gợi ý, autoplay, bộ lọc và các nguồn (providers/)
@@ -662,10 +743,18 @@ src/
   types/ utils/       Kiểu dùng chung, logger, lỗi, phân trang, embed
   startup/            Migration khi khởi động (khóa advisory) và đăng ký lệnh slash theo hash
   health/             Heartbeat cho HEALTHCHECK của Docker (healthcheck.ts ở src/ chạy bằng node dist/healthcheck.js)
+web/                  Web dashboard (v1.4): workspace npm perry-web, Next.js 16 App Router với shadcn/ui; import mã src/ không kéo theo discord.js
+  app/                Trang và Route Handler: trang giới thiệu, /dashboard, /leaderboard, /auth, /api, /healthz
+  components/         Component React (ui/: shadcn/ui, landing/, dashboard/)
+  server/             Mã chỉ chạy ở server: cấu hình, phiên, OAuth, CSRF, giới hạn tần suất, client cầu nối, ghi cài đặt, xử lý API
+  shared/             Mã dùng chung cho server và trình duyệt: schema và kiểu API, danh mục i18n (en, vi), CSP
+  lib/                Tiện ích phía trình duyệt (api-client.ts)
+  proxy.ts            Nonce CSP theo từng yêu cầu và ngôn ngữ cho các trang
+  instrumentation.ts  Kiểm tra cấu hình web và kết nối PostgreSQL, Redis khi khởi động
 scripts/              Bash: setup, deploy, update, backup, restore, doctor, logs (+ lib/common.sh);
                       tsx: deploy-commands.ts, check-commands.ts, db-migrate.ts
-Dockerfile            Image bot nhiều giai đoạn (Node 24 alpine, chạy bằng user node), .dockerignore đi kèm
-docker-compose.yml    Stack production: bot, lavalink-init, lavalink, postgres, redis (không publish cổng)
+Dockerfile            Image nhiều giai đoạn (Node 24 alpine, chạy bằng user node): bot và server standalone của web, .dockerignore đi kèm
+docker-compose.yml    Stack production: bot, lavalink-init, lavalink, postgres, redis, và web khi COMPOSE_PROFILES=web (chỉ web publish cổng, trên 127.0.0.1)
 docker-compose.dev.yml  Hạ tầng dev: Lavalink (+ PostgreSQL, Redis với --profile storage), bind 127.0.0.1
 Makefile              Lệnh tắt gọi scripts/ hoặc docker compose (make help)
 .github/workflows/    ci.yml (kiểm tra, build image, validate compose) và release.yml (đẩy image đa kiến trúc lên GHCR khi có tag v*)

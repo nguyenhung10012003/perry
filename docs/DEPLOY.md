@@ -6,21 +6,22 @@ Detailed guide for the [README's "Quick deploy" section](../README.md#quick-depl
 
 ## 1. What the stack contains
 
-`docker compose up -d` (or `make up`) runs five services in the `perry` project:
+`docker compose up -d` (or `make up`) runs five services in the `perry` project, six with the web dashboard (`COMPOSE_PROFILES=web`):
 
 | Service         | Image                                       | Role                                                                                              |
 | --------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | `bot`           | built from `Dockerfile` (or `BOT_IMAGE`)    | The Discord bot, runs as the `node` user with a read-only root filesystem, migrates and registers slash commands by itself |
 | `lavalink-init` | `ghcr.io/lavalink-devs/lavalink:4.2.2`      | Runs once to hand the plugin volume over to uid 322, then exits with code 0                       |
 | `lavalink`      | `ghcr.io/lavalink-devs/lavalink:4.2.2`      | Audio server; downloads 3 plugins the first time (30-90 seconds)                                  |
-| `postgres`      | `postgres:18.6-alpine3.24`                  | Server settings (including the v1.3 language) and the optional play history                       |
-| `redis`         | `redis:8.8.3-alpine3.23`                    | Cooldowns, caches, queue snapshots, slash command hash                                            |
+| `postgres`      | `postgres:18.6-alpine3.24`                  | Server settings (including the v1.3 language), moderation cases, levels and role rewards (v1.4), the optional play history |
+| `redis`         | `redis:8.8.3-alpine3.23`                    | Cooldowns, caches, queue snapshots, slash command hash, dashboard sessions and the bot-web bridge (v1.4) |
+| `web`           | the bot image (`perry-bot:local` or `BOT_IMAGE`) | Optional (v1.4): the web dashboard and landing page, a Next.js standalone server from the same image; published on `127.0.0.1:${WEB_PORT:-3000}` only |
 
-- Networks: `lavalink` (Lavalink and the bot) and `data` (PostgreSQL, Redis and the bot). Both are plain bridge networks, not `internal`, because the bot needs an outbound route to Discord. No service has `ports:`; during testing, `PortBindings` was empty for all 4 containers.
+- Networks: `lavalink` (Lavalink and the bot) and `data` (PostgreSQL, Redis and the bot). Both are plain bridge networks, not `internal`, because the bot needs an outbound route to Discord. No service has `ports:` except the optional `web`, which publishes `127.0.0.1:${WEB_PORT:-3000}` only and joins only the `data` network; during the v1.2 testing, `PortBindings` was empty for all 4 containers.
 - Volumes: `postgres-data`, `redis-data` (AOF on), `lavalink-plugins`. The real names carry the project prefix, for example `perry_postgres-data`.
 - Logs: `json-file`, at most 3 files x 10 MB per service.
-- The bot gets its configuration through an explicit `environment` list in the compose file (no `env_file`), because `.env` also contains values meant only for running on the host (`DATABASE_URL=...127.0.0.1`, `LAVALINK_HOST=127.0.0.1`). Inside the container, `LAVALINK_HOST=lavalink`, `STORAGE_DRIVER=persistent`, and `DATABASE_URL` and `REDIS_URL` are built from the passwords and service names. `DEFAULT_LOCALE` is passed through (default `en`).
-- Compose checks `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `LAVALINK_PASSWORD`, `POSTGRES_PASSWORD`, `REDIS_PASSWORD` across the **whole file**, so every `docker compose` command (including `ps`, `logs`, `down`) fails with `<VAR> is not set in .env, run ./scripts/setup.sh` if `.env` is missing or one of these variables is empty.
+- The bot gets its configuration through an explicit `environment` list in the compose file (no `env_file`), because `.env` also contains values meant only for running on the host (`DATABASE_URL=...127.0.0.1`, `LAVALINK_HOST=127.0.0.1`). Inside the container, `LAVALINK_HOST=lavalink`, `STORAGE_DRIVER=persistent`, and `DATABASE_URL` and `REDIS_URL` are built from the passwords and service names. `DEFAULT_LOCALE` is passed through (default `en`). The `web` service has its own list: no `DISCORD_TOKEN`, and `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `PUBLIC_URL`, `SESSION_SECRET` and `WEB_TRUST_PROXY` from `.env`.
+- Compose checks `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `LAVALINK_PASSWORD`, `POSTGRES_PASSWORD`, `REDIS_PASSWORD` across the **whole file**, so every `docker compose` command (including `ps`, `logs`, `down`) fails with `<VAR> is not set in .env, run ./scripts/setup.sh` if `.env` is missing or one of these variables is empty. The web variables are not checked this way, because a stack without the web must not need them; the web itself exits with code 1 and lists the missing names, and `setup.sh --web` and `doctor.sh` check them too.
 
 ## 2. Preparing an Ubuntu/Debian server
 
@@ -37,7 +38,7 @@ sudo ufw allow OpenSSH               # not verified
 sudo ufw enable                      # not verified
 ```
 
-Note about `ufw`: ports published by Docker bypass `ufw`, but this stack publishes no ports so it is not affected. Do not add `ports:` for Lavalink, PostgreSQL or Redis.
+Note about `ufw`: ports published by Docker bypass `ufw`, but this stack publishes no ports so it is not affected. Do not add `ports:` for Lavalink, PostgreSQL or Redis. The optional `web` service publishes on `127.0.0.1` only, which other machines cannot reach whatever `ufw` allows. With the web dashboard, open 80 and 443 for the reverse proxy: `sudo ufw allow 80,443/tcp` (not verified).
 
 Minimum sizing: about 2 GB of free RAM (Lavalink defaults to `-Xmx1G`, tune it with `LAVALINK_JAVA_OPTS`); the bot image is about 207 MB.
 
@@ -94,9 +95,10 @@ make ps
 - `./scripts/update.sh` backs up PostgreSQL first, as always. Keep that backup until the upgrade works.
 - The bot applies migrations `0002_moderation` and `0003_leveling` automatically on startup. `0002` adds the `mod_cases` and `mod_case_counters` tables and the `guild_settings.mod_log_channel_id` and `mod_dm_target` columns; `0003` adds the `member_levels` and `level_role_rewards` tables and the leveling columns of `guild_settings` (leveling stays off in every server until it is turned on). When running the bot on the host instead of Docker, run `npm run db:migrate` before starting it; otherwise the bot logs `Database schema is missing or outdated` and runs in degraded mode.
 - The slash commands are re-registered once because their definitions changed (8 moderation commands, `/rank`, `/leaderboard`, `/xp`, `/settings mod-log`, `/settings mod-dm` and `/settings leveling`).
-- The bot's role in each server needs the new permissions Kick Members, Ban Members, Timeout Members, Manage Messages, Read Message History and Manage Roles: open the new invite link from the README again, or grant them to the bot's role by hand.
+- The bot's role in each server needs the new permissions Kick Members, Ban Members, Timeout Members, Manage Messages, Read Message History, Manage Roles and Manage Server (for the dashboard's AutoMod rules): open the new invite link from the README again, or grant them to the bot's role by hand.
 - Move the bot's role above the members it should moderate and above every level reward role (Server Settings > Roles); Discord refuses actions on members and roles that are not below the bot's highest role.
-- The bot now also uses the `GuildMessages` gateway intent (for XP). It is not privileged, so nothing changes in the Developer Portal. No new `.env` variable is needed.
+- The bot now also uses the `GuildMessages` gateway intent (for XP). It is not privileged, so nothing changes in the Developer Portal for the bot. The bot needs no new `.env` variable; re-running `./scripts/setup.sh` appends the web keys (section 6 of `.env.example`) and generates `SESSION_SECRET`, which changes nothing while the web is off.
+- Optional web dashboard: add the client secret and the redirect in the Developer Portal (README, step 6 of "Create the bot application"), run `./scripts/setup.sh --web`, then `./scripts/deploy.sh`, and set up the reverse proxy of [section 7](#7-web-dashboard-behind-a-reverse-proxy). Without `web` in `COMPOSE_PROFILES` the stack keeps its five services. The dashboard needs a v1.4 bot: an older bot does not publish its server list, so the dashboard answers 503 `bot_unavailable`.
 
 ## 5. Backups, restore, retention
 
@@ -143,7 +145,62 @@ The summary line is `N error(s), M warning(s). See ./scripts/logs.sh <service> f
 - It finds containers through Compose labels, so it works even when `.env` is missing or the stack is stopped (the rows are then `FAIL ... not running` or `SKIP`, without crashing).
 - The `bot login` row only detects a `Login failed` line in the last 200 log lines. A `healthy` bot container only means the heartbeat is fresh; with a real bot that requires a successful Discord login (**not verified**).
 
-## 7. Resource limits
+With the web dashboard enabled (`COMPOSE_PROFILES=web`), the table has these extra rows (from a v1.4 run with a fake token, so the bot never logged in):
+
+```
+PASS   env web              all set: DISCORD_CLIENT_SECRET PUBLIC_URL SESSION_SECRET
+PASS   public url           an https origin (or http on loopback), no path
+PASS   session secret       64 characters
+PASS   container web        healthy (restarts: 0)
+PASS   web health           /healthz: Postgres and Redis reachable
+WARN   web bridge           the bot has not published its guild list; it is offline or older than 1.4 (the dashboard answers 503)
+PASS   published ports      nothing is exposed beyond 127.0.0.1 (only the web may bind 127.0.0.1)
+```
+
+- `env web` fails when `DISCORD_CLIENT_SECRET`, `PUBLIC_URL` or `SESSION_SECRET` is empty. `public url` fails unless `PUBLIC_URL` is an origin like `https://perry.example.com` (http only for `localhost`, `127.0.0.1` and `[::1]`; no path or trailing slash; port 1-65535); the value itself is not printed. `session secret` fails below 32 characters.
+- `web bridge` reads the TTL of the bot's server list in Redis: PASS once a v1.4 bot is logged in, WARN otherwise (the dashboard then answers 503 `bot_unavailable`).
+- `published ports` accepts only the `web` service, and only bound to `127.0.0.1`; any other published port is a FAIL.
+- Without the web profile, the table has a single `SKIP web` row instead.
+
+## 7. Web dashboard behind a reverse proxy
+
+The web dashboard (v1.4, `COMPOSE_PROFILES=web`) is published on `127.0.0.1:${WEB_PORT:-3000}` only. Serve it over HTTPS with a reverse proxy on the same host, at the address set in `PUBLIC_URL`. Both examples below are **not verified** on a real server.
+
+Caddy (gets and renews the certificate by itself):
+
+```
+perry.example.com {
+    header Strict-Transport-Security "max-age=31536000"
+    reverse_proxy 127.0.0.1:3000
+}
+```
+
+nginx (certificate from certbot or your own; redirect port 80 to https in a separate `server` block):
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name perry.example.com;
+    ssl_certificate     /etc/letsencrypt/live/perry.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/perry.example.com/privkey.pem;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+- `PUBLIC_URL` must be exactly the address users open (`https://perry.example.com`, no path or trailing slash), and `<PUBLIC_URL>/auth/callback` must be listed under OAuth2 > Redirects in the Developer Portal. Saves are refused with 403 `csrf_failed` when the browser's `Origin` does not match `PUBLIC_URL`.
+- Client IP address for the rate limits: the web reads `X-Forwarded-For` from the right and skips the addresses in `WEB_TRUST_PROXY` (default `loopback,uniquelocal`), so a client cannot choose its own rate-limit bucket by sending a fake header. Add your proxy's address only if it runs on another machine with a public address.
+- HSTS: the web does not send it, because it also runs on `http://localhost` during development. Add it at the proxy as above.
+- Firewall: open 80 and 443 for the proxy (`sudo ufw allow 80,443/tcp`, not verified). Never publish port 3000 on `0.0.0.0`; `doctor.sh` reports `FAIL published ports` for that.
+- After a change, `./scripts/doctor.sh` should show `PASS public url` and `PASS web health`; then open `PUBLIC_URL` in a browser and log in.
+
+## 8. Resource limits
 
 `docker-compose.yml` contains a commented-out example for `bot` and `lavalink`. Uncomment it and tune it for your VPS:
 
@@ -157,21 +214,21 @@ deploy:
 
 Applying these limits has not been verified. To lower `-Xmx`, set `LAVALINK_JAVA_OPTS=-Xmx512M` in `.env`, then `docker compose up -d`.
 
-## 8. Using a prebuilt image (`BOT_IMAGE`, GHCR)
+## 9. Using a prebuilt image (`BOT_IMAGE`, GHCR)
 
 By default the stack builds the bot from source and needs no registry account. If the project owner publishes images, set in `.env`:
 
 ```
-BOT_IMAGE=ghcr.io/<owner>/<repo>:1.3.0
+BOT_IMAGE=ghcr.io/<owner>/<repo>:1.4.0
 ```
 
-When `BOT_IMAGE` is set, `deploy.sh` and `update.sh` run `docker compose pull bot` instead of building. Only the failure path (the image cannot be pulled) has been tried; pulling a real image is **not verified**.
+When `BOT_IMAGE` is set, `deploy.sh` and `update.sh` run `docker compose pull bot` instead of building. The `web` service uses the same image. Only the failure path (the image cannot be pulled) has been tried; pulling a real image is **not verified**.
 
 - The `.github/workflows/release.yml` workflow builds `linux/amd64` and `linux/arm64` when a `v*` tag is pushed and pushes to `ghcr.io/<lowercased github.repository>` with the tags `<version>`, `<major>.<minor>` and `latest` (`latest` is only applied to stable releases, not to pre-release tags such as `v1.3.0-rc1`), using `GITHUB_TOKEN` (the `packages: write` permission is only granted at job level). This workflow has only been written and checked with actionlint; it has not run on GitHub.
 - A newly created GHCR package is usually private. On the server, run `docker login ghcr.io` with a token that has `read:packages`, or make the package public in its settings on GitHub (not verified).
-- The `ci.yml` workflow (every push to `main` and every pull request) runs typecheck, lint, build, `check-commands`, shellcheck, a `docker build` without pushing, `docker compose config` for both compose files and a comparison of the image tags between them (on a mismatch it prints `Image tags differ between docker-compose.yml and docker-compose.dev.yml:`). Its shell commands have been re-run locally; the workflow itself has not run on GitHub.
+- The `ci.yml` workflow (every push to `main` and every pull request) runs typecheck, lint, build, `check-commands`, `npm test`, the web's type generation, type check, build and bundle check, shellcheck, a `docker build` without pushing, `docker compose config` for both compose files (and with `--profile web`) and a comparison of the image tags between them (on a mismatch it prints `Image tags differ between docker-compose.yml and docker-compose.dev.yml:`). Its shell commands have been re-run locally; the workflow itself has not run on GitHub.
 
-## 9. Development infrastructure
+## 10. Development infrastructure
 
 `docker-compose.dev.yml` only contains Lavalink, PostgreSQL and Redis for `npm run dev`, bound to `127.0.0.1`.
 
@@ -181,9 +238,9 @@ make dev-infra-down       # stop, keep the data
 docker compose -f docker-compose.dev.yml up -d lavalink    # Lavalink only, STORAGE_DRIVER=memory mode
 ```
 
-For ports, variables and how to run the bot on the host, see the [README section "Running the development infrastructure"](../README.md#running-the-development-infrastructure-lavalink-postgresql-redis). When running on the host, remember `npm run db:migrate` after upgrading to v1.3. Both compose files must keep the same image tags; CI checks this.
+For ports, variables and how to run the bot on the host, see the [README section "Running the development infrastructure"](../README.md#running-the-development-infrastructure-lavalink-postgresql-redis). When running on the host, remember `npm run db:migrate` after upgrading to v1.3. Both compose files must keep the same image tags; CI checks this. The web dashboard runs on the host with `npm run web:dev` (see the [README section "Local development"](../README.md#local-development)).
 
-## 10. Upgrading from the v1.1 dev stack
+## 11. Upgrading from the v1.1 dev stack
 
 The v1.1 dev stack used the `perry-lavalink` project with the `postgres-data`/`redis-data` volumes (full names prefixed with `perry-lavalink_`), while the production stack uses the `perry` project with its own volumes, so the data is **not** carried over automatically. `docker-compose.dev.yml` keeps the v1.1 project, volume and network names, so old dev data is reattached when you run `make dev-infra`. The plugin cache used to be a `lavalink/plugins/` bind mount; it is now a volume, so the plugins are downloaded once more.
 
@@ -204,27 +261,31 @@ make up
 
 The PostgreSQL password in `.env` must be the old dev stack's password while exporting (the dump contains no passwords, so restoring into a new stack with a new password is fine). Schema check: after the restore, the bot runs any missing migrations (including `0001_guild_language`) when it restarts.
 
-## 11. Security checklist
+## 12. Security checklist
 
 - [ ] `.env` has mode `600` and is not in git (`doctor.sh` checks the mode).
 - [ ] The Discord token has never been pasted into logs, issues or chat. If it leaked: **Reset Token**, fix `.env`, `./scripts/deploy.sh`.
-- [ ] No `ports:` for Lavalink, PostgreSQL, Redis (`doctor.sh` row `published ports`). On the VPS only SSH is open.
+- [ ] No `ports:` for Lavalink, PostgreSQL, Redis (`doctor.sh` row `published ports`). On the VPS only SSH is open, plus 80 and 443 for the reverse proxy when the web dashboard is enabled.
+- [ ] Web dashboard: the `web` port stays bound to `127.0.0.1` (Docker-published ports bypass `ufw`, but a `127.0.0.1` binding is not reachable from other machines; `doctor.sh` fails any other binding). The reverse proxy serves HTTPS and sends HSTS.
+- [ ] `DISCORD_CLIENT_SECRET` and `SESSION_SECRET` are protected like the token. If the client secret leaked, reset it in the Developer Portal (OAuth2), fix `.env` and run `./scripts/deploy.sh`; changing `SESSION_SECRET` logs every dashboard user out.
+- [ ] Only trusted people have Manage Server: in the dashboard they see the name of every channel the bot can see, including private channels.
 - [ ] Only trusted people are in the `docker` group (it is equivalent to root; the passwords are in the containers' environment variables and in the Redis process arguments, readable with `docker inspect`).
 - [ ] The `backups/` directory has mode `700`, the files `600`, and off-machine copies are protected equally.
 - [ ] Security updates are enabled for the VPS operating system and `./scripts/update.sh` is run regularly to pick up bot image patches.
 - [ ] Passwords are changed by editing `.env`, then `docker compose up -d` (not verified on a running stack). `POSTGRES_PASSWORD` only takes effect while the volume is empty: after the first run, change it with `ALTER USER` in PostgreSQL.
 - [ ] If you run the bot publicly: read the limits of the SSRF filter in the [README section "Security"](../README.md#security).
 
-Checked on the real image and stack: the bot runs as uid 1000 (`node`), with a read-only root filesystem (writing to `/` is denied, `/tmp` is writable), `cap_drop: ALL`, `no-new-privileges`, `init: true`; generated tokens and passwords do not appear in the stack logs, in `docker history` or in `docker image inspect` of the bot image.
+Checked on the real image and stack: the bot runs as uid 1000 (`node`), with a read-only root filesystem (writing to `/` is denied, `/tmp` is writable), `cap_drop: ALL`, `no-new-privileges`, `init: true`; generated tokens and passwords do not appear in the stack logs, in `docker history` or in `docker image inspect` of the bot image. v1.4: the `web` container runs the same way (uid 1000, read-only root filesystem with only `/tmp` and the Next.js cache directory writable, `cap_drop: ALL`, `no-new-privileges`), receives no `DISCORD_TOKEN` and is published on `127.0.0.1` only.
 
-## 12. arm64 and amd64
+## 13. arm64 and amd64
 
 - All four base images (`node:24.22.0-alpine3.24`, `ghcr.io/lavalink-devs/lavalink:4.2.2`, `postgres:18.6-alpine3.24`, `redis:8.8.3-alpine3.23`) have `linux/amd64` and `linux/arm64` variants; checked with `docker buildx imagetools inspect`.
 - The bot's runtime dependency tree has no native modules (77 packages, none with install scripts or `os`/`cpu` constraints), so `node_modules` is shared across architectures. The `Dockerfile` has a check step that fails the build if such a runtime package shows up later.
 - Actually built on arm64 (the test machine). The `linux/amd64` image was built and run through emulation and printed `x64`; running it directly on an amd64 machine is **not verified**.
 - A single `docker buildx build --platform linux/amd64,linux/arm64` command does not work with the test machine's default `docker` driver ("Multi-platform build is not supported for the docker driver"); GitHub Actions uses `setup-buildx-action` so it does not hit this limit, but it has not run.
+- v1.4: the web is built with Next.js in the build stage, on the build platform (SWC, Tailwind and lightningcss use native binaries there). Its standalone output is plain JavaScript, so the runtime still has no native modules. Built and checked on arm64 and, through emulation, on amd64.
 
-## 13. Complete removal
+## 14. Complete removal
 
 ```bash
 make down                        # stop, keep the data
@@ -233,7 +294,7 @@ docker compose down -v           # ALSO DELETES the PostgreSQL, Redis and plugin
 
 Run `./scripts/backup.sh` and copy the backup off the machine before using `down -v`.
 
-## 14. Not verified
+## 15. Not verified
 
 - A real Discord login inside the container: the heartbeat after ready, `HEALTHCHECK` turning `healthy`, registering the slash commands with Discord, real audio playback.
 - Graceful shutdown with a real gateway and voice player (only the shutdown path before login was tried).
@@ -248,4 +309,5 @@ Run `./scripts/backup.sh` and copy the backup off the machine before using `down
 - v1.3: how localized commands render in real Discord clients, `/settings language` in a real server, upgrading a real running stack (details in the README).
 - v1.4 moderation: every moderation action against real Discord members (hierarchy, DMs, audit-log reasons, `/purge`), the mod log in a real client, the re-invite permission update, upgrading a real running stack to v1.4 (details in the README).
 - v1.4 leveling: XP from real messages, level-up messages in real channels, role rewards with a real role hierarchy, the `/leaderboard` buttons in a real client (details in the README).
+- v1.4 web dashboard: a real Discord login (consent screen, code exchange, token revocation), real server data and the Redis bridge with a bot connected to Discord, AutoMod rules in a real server, the reverse proxy examples of section 7 on a real server, browsers other than headless Chrome, the web steps of `ci.yml` on GitHub (details in the README).
 - Every item listed in the [README section "What has not been verified at runtime"](../README.md#what-has-not-been-verified-at-runtime) (v1 and v1.1) still applies.

@@ -2,7 +2,7 @@
 
 **English** | [Tiếng Việt](README.vi.md)
 
-A multi-server Discord bot written in TypeScript (discord.js 14) that plays music through the [Lavalink](https://lavalink.dev) 4.2.2 audio server. Version 1.1 added persistent storage (PostgreSQL + Redis), music discovery (autoplay, radio, similar tracks) and session restore after a restart. Version 1.2 packaged everything as a Docker image and a Docker Compose stack that runs with three commands, plus scripts for setup, updates, backups and diagnostics. Version 1.3 (current) internationalizes the bot: English is the default, Vietnamese can be chosen per server (see [Language](#language)). The bot has a modular structure so other feature groups (moderation, leveling, ...) can be added later.
+A multi-server Discord bot written in TypeScript (discord.js 14) that plays music through the [Lavalink](https://lavalink.dev) 4.2.2 audio server. Version 1.1 added persistent storage (PostgreSQL + Redis), music discovery (autoplay, radio, similar tracks) and session restore after a restart. Version 1.2 packaged everything as a Docker image and a Docker Compose stack that runs with three commands, plus scripts for setup, updates, backups and diagnostics. Version 1.3 internationalizes the bot: English is the default, Vietnamese can be chosen per server (see [Language](#language)). Version 1.4 (current) adds [moderation](#moderation), [leveling](#leveling) with XP, levels and a leaderboard, and an optional [web dashboard](#web-dashboard) where server managers log in with Discord and configure the bot for each server. The bot has a modular structure so other feature groups can be added later.
 
 ## Quick deploy
 
@@ -27,6 +27,7 @@ docker compose up -d                                 # or: make up
 - The first time, Lavalink downloads 3 plugins, which takes about 30-90 seconds. The first image build time on a clean machine has not been measured (the test run had a warm layer cache).
 - The bot runs the database migrations and registers the slash commands by itself on startup (see [Registering slash commands](#registering-slash-commands)).
 - Unattended runs (CI, scripts): `DISCORD_TOKEN=... DISCORD_CLIENT_ID=... ./scripts/setup.sh --non-interactive`.
+- Web dashboard (optional, v1.4): `./scripts/setup.sh --web` also asks for `PUBLIC_URL` and `DISCORD_CLIENT_SECRET` and turns the `web` service on; see [Web dashboard](#web-dashboard).
 - Use `make up` rather than `docker compose up -d` if you want correct version/commit labels on the image (the latter labels it `dev`/`unknown`).
 
 Then check with `./scripts/doctor.sh` (or `make doctor`) and view the logs with `./scripts/logs.sh`.
@@ -51,7 +52,7 @@ git clone <your-repository-URL> perry && cd perry   # not verified
 make up
 ```
 
-Step 3 (`setup.sh`, `make up`) was actually run on Docker Desktop; `setup.sh` was also run in a Debian 12 container (bash 5, GNU coreutils, no `openssl`). Step-by-step details and expected logs: [docs/DEPLOY.md](docs/DEPLOY.md).
+Step 3 (`setup.sh`, `make up`) was actually run on Docker Desktop; `setup.sh` was also run in a Debian 12 container (bash 5, GNU coreutils, no `openssl`). Step-by-step details and expected logs: [docs/DEPLOY.md](docs/DEPLOY.md). With the web dashboard, the reverse proxy in front of it also needs ports 80 and 443 (`sudo ufw allow 80,443/tcp`, not verified); see [docs/DEPLOY.md](docs/DEPLOY.md#7-web-dashboard-behind-a-reverse-proxy).
 
 ### Updates, backups, logs and diagnostics
 
@@ -99,7 +100,7 @@ npm run build && npm start
 ### Security notes for deployment
 
 - The bot container runs as the `node` user (uid 1000), with a read-only root filesystem (only `/tmp` is writable), `cap_drop: ALL` and `no-new-privileges`. The bot opens no HTTP port.
-- No service publishes a port to the host in `docker-compose.yml`: Lavalink, PostgreSQL and Redis only live on Docker's private networks (`PortBindings` was checked to be empty for all 4 containers). Do not add `ports:` for them.
+- No service publishes a port to the host in `docker-compose.yml`: Lavalink, PostgreSQL and Redis only live on Docker's private networks (`PortBindings` was checked to be empty for all 4 containers). Do not add `ports:` for them. The optional `web` service (v1.4) is the only one with a port, bound to `127.0.0.1` for a reverse proxy on the same host (see [Web dashboard](#web-dashboard)).
 - `.env` has mode `600`; do not commit it, and do not paste it into issues or chat. If the token leaks, go to the Developer Portal, choose **Reset Token**, fix `.env` and run `./scripts/deploy.sh`.
 - Changing the Lavalink/Redis password: edit `.env`, then `docker compose up -d` (recreates the containers). For the PostgreSQL password see the table above.
 - Note: the Redis and PostgreSQL passwords are in the bot container's environment variables (`REDIS_URL`, `DATABASE_URL`) and in the Redis process arguments, so members of the `docker` group (equivalent to root) can read them with `docker inspect`. Only give `docker` group membership to trusted people.
@@ -107,7 +108,7 @@ npm run build && npm start
 
 ### Detailed documentation
 
-[docs/DEPLOY.md](docs/DEPLOY.md): full VPS guide, updates and rollback (including upgrading to v1.3), backups, `doctor.sh` explained, resource limits, using a prebuilt image from GHCR (`BOT_IMAGE`), upgrading from the v1.1 dev stack, list of unverified items.
+[docs/DEPLOY.md](docs/DEPLOY.md): full VPS guide, updates and rollback (including upgrading to v1.3 and v1.4), backups, `doctor.sh` explained, the web dashboard behind a reverse proxy, resource limits, using a prebuilt image from GHCR (`BOT_IMAGE`), upgrading from the v1.1 dev stack, list of unverified items.
 
 ## Features
 
@@ -118,6 +119,7 @@ npm run build && npm start
 - DJ role and per-server settings via `/settings`; settings are stored in PostgreSQL so they survive restarts.
 - Moderation (v1.4): `/ban`, `/unban`, `/kick`, `/timeout`, `/warn`, `/warnings`, `/case` and `/purge`, numbered cases per server, a mod-log channel and an optional DM to the user (see [Moderation](#moderation)).
 - Leveling (v1.4): members earn XP for their messages (off until a server manager turns it on), levels on a fixed curve, `/rank`, a paged `/leaderboard`, `/xp` for admins, level-up messages and role rewards (see [Leveling](#leveling)).
+- Web dashboard (v1.4, optional): a landing page, login with Discord and per-server pages for the general, moderation and leveling settings, Discord's AutoMod rules and the leaderboard, plus an opt-in public leaderboard page. Built with Next.js and shadcn/ui, in English and Vietnamese, and served from the same image as the bot (see [Web dashboard](#web-dashboard)).
 - Music discovery: `/autoplay` (adds suggested tracks when the queue runs out), `/radio` (plays continuously from a track or a query), `/similar` (browse and pick similar tracks).
 - Playlist and YouTube Mix links are added to the queue in full, starting from the selected video.
 - Restores the playback session after the bot restarts: the bot rejoins the voice channel and continues the queue.
@@ -138,28 +140,30 @@ npm run build && npm start
 3. **Bot** tab: choose **Reset Token** to get the token; this is `DISCORD_TOKEN`. The token is shown only once; do not share it and do not put it in git.
 4. The bot uses the `Guilds`, `GuildVoiceStates` and (since v1.4, for XP from messages) `GuildMessages` intents. None of them is privileged and nothing has to be switched on in the portal: the bot never reads message content. **Do not enable** any Privileged Gateway Intent (Presence, Server Members, Message Content).
 5. To invite the bot to many servers, enable **Public Bot** in the **Bot** tab (it is on by default for new applications; if it is off, only the application owner can invite the bot).
+6. Web dashboard only (optional, v1.4): in the **OAuth2** tab, copy the **Client Secret** (choose **Reset Secret** to get one); this is `DISCORD_CLIENT_SECRET`. Under **Redirects**, add `<PUBLIC_URL>/auth/callback` exactly (for example `https://perry.example.com/auth/callback`) and, for local development, `http://localhost:3000/auth/callback`. The dashboard only asks users for the `identify` and `guilds` scopes.
 
 ## Invite link
 
 Replace `<DISCORD_CLIENT_ID>` with your Application ID:
 
 ```
-https://discord.com/oauth2/authorize?client_id=<DISCORD_CLIENT_ID>&scope=bot%20applications.commands&permissions=1101930785798
+https://discord.com/oauth2/authorize?client_id=<DISCORD_CLIENT_ID>&scope=bot%20applications.commands&permissions=1101930785830
 ```
 
 - Scope: `bot applications.commands`.
-- Permissions (permissions = `1101930785798`): View Channels, Send Messages, Embed Links, Connect, Speak, Use Slash Commands, Manage Roles for leveling (v1.4: the bot gives and removes the role rewards), and for moderation (v1.4):
+- Permissions (permissions = `1101930785830`): View Channels, Send Messages, Embed Links, Connect, Speak, Use Slash Commands, Manage Roles for leveling (v1.4: the bot gives and removes the role rewards), Manage Server for the web dashboard (v1.4: the bot creates and edits its Discord AutoMod rules), and for moderation (v1.4):
   - Kick Members: `/kick`.
   - Ban Members: `/ban` and `/unban`.
   - Timeout Members (`ModerateMembers`): `/timeout`.
   - Manage Messages: `/purge` deletes other users' messages.
   - Read Message History: `/purge` reads the recent messages of the channel.
-- The value `1101930785798` was computed with discord.js `PermissionsBitField`: the v1.3 permissions (1024 + 2048 + 16384 + 1048576 + 2097152 + 2147483648 = `2150648832`) plus 2 + 4 + 1099511627776 + 8192 + 65536 for moderation and 268435456 (Manage Roles) for leveling.
+- The value `1101930785830` was computed with discord.js `PermissionsBitField`: the v1.3 permissions (1024 + 2048 + 16384 + 1048576 + 2097152 + 2147483648 = `2150648832`) plus 2 + 4 + 1099511627776 + 8192 + 65536 for moderation, 268435456 (Manage Roles) for leveling and 32 (Manage Server) for the dashboard's AutoMod rules.
+- Without Manage Server, the AutoMod tab of the dashboard says that it is unavailable; everything else works.
 - Servers that added the bot before v1.4: the bot's role does not get the new permissions by itself. Open the new link again (whether re-authorizing updates the bot's role has not been verified) or grant the permissions to the bot's role by hand. The bot's role must also sit above the members it should moderate and above every level reward role (Server Settings > Roles).
 
 ## Configuring `.env`
 
-Quick way: `./scripts/setup.sh` creates `.env` from `.env.example`, asks for the token and Application ID, generates the passwords and fills in `DATABASE_URL` / `REDIS_URL` for running on the host. It is safe to re-run (existing values are not overwritten); when `.env.example` gains new keys, the script appends them to the existing `.env` (it prints `Added new key: KEY`).
+Quick way: `./scripts/setup.sh` creates `.env` from `.env.example`, asks for the token and Application ID (with `--web` also `PUBLIC_URL` and `DISCORD_CLIENT_SECRET`), generates the passwords and `SESSION_SECRET`, and fills in `DATABASE_URL` / `REDIS_URL` for running on the host. It is safe to re-run (existing values are not overwritten); when `.env.example` gains new keys, the script appends them to the existing `.env` (it prints `Added new key: KEY`).
 
 Manual way:
 
@@ -191,7 +195,7 @@ Edit `.env` (the file is already in `.gitignore`; never commit it):
 | `REDIS_PASSWORD`              | Yes\*    | Redis password, only read by Docker Compose; must match `REDIS_URL`.                                                                                                                                                   |
 | `POSTGRES_PORT`               | No       | PostgreSQL port on `127.0.0.1` (default `5432`), only read by `docker-compose.dev.yml`. Change it on a conflict and update `DATABASE_URL` accordingly.                                                                |
 | `REDIS_PORT`                  | No       | Redis port on `127.0.0.1` (default `6379`), only read by `docker-compose.dev.yml`. Change it on a conflict and update `REDIS_URL` accordingly.                                                                         |
-| `BOT_IMAGE`                   | No       | Empty: build the image from source. Set it (for example `ghcr.io/<owner>/<repo>:1.3.0`) so `deploy.sh`/`update.sh` pull a prebuilt image. Only read by Docker Compose and the scripts.                                |
+| `BOT_IMAGE`                   | No       | Empty: build the image from source. Set it (for example `ghcr.io/<owner>/<repo>:1.4.0`) so `deploy.sh`/`update.sh` pull a prebuilt image. Only read by Docker Compose and the scripts.                                |
 | `AUTO_MIGRATE`                | No       | `true` to make the bot run migrations on startup (a PostgreSQL advisory lock prevents concurrent runs). Default `true` in the image/compose, `false` with `npm start`.                                                 |
 | `REGISTER_COMMANDS_ON_START`  | No       | `true` to make the bot register the slash commands when ready, only when the command definitions changed. Default `true` in the image/compose, `false` with `npm start`.                                               |
 | `REGISTER_COMMANDS_FORCE`     | No       | `true` to skip the hash comparison and always re-register the commands on startup. Default `false`.                                                                                                                   |
@@ -214,10 +218,19 @@ Edit `.env` (the file is already in `.gitignore`; never commit it):
 | `YOUTUBE_OAUTH_REFRESH_TOKEN` | No       | Used when OAuth is enabled for YouTube (see below).                                                                                                                                                                   |
 | `YOUTUBE_PO_TOKEN`            | No       | Used when poToken is enabled for YouTube.                                                                                                                                                                             |
 | `YOUTUBE_VISITOR_DATA`        | No       | Goes together with `YOUTUBE_PO_TOKEN`.                                                                                                                                                                                |
+| `COMPOSE_PROFILES`            | No       | `web` starts the web dashboard with the stack (`./scripts/setup.sh --web` sets it). Empty: bot only. Read by Docker Compose and the scripts. |
+| `PUBLIC_URL`                  | Yes\*\*\* | Public address of the dashboard: an origin without path or trailing slash, `https://` (port 1-65535 allowed), or `http://` only for `localhost`, `127.0.0.1` and `[::1]` during development. The OAuth2 redirect is `<PUBLIC_URL>/auth/callback`. |
+| `DISCORD_CLIENT_SECRET`       | Yes\*\*\* | OAuth2 client secret (Developer Portal > OAuth2), 16-128 characters `[A-Za-z0-9_-]`. |
+| `SESSION_SECRET`              | Yes\*\*\* | 32-256 characters; the key that encrypts the Discord tokens in the sessions is derived from it. `setup.sh` generates 64 hex characters. Changing it logs everyone out. |
+| `WEB_PORT`                    | No       | Port on `127.0.0.1` for the reverse proxy (default `3000`); the listen port when the web runs on the host. |
+| `WEB_TRUST_PROXY`             | No       | Proxy addresses skipped in `X-Forwarded-For` when the web looks for the client IP address (rate limits): a comma list of `loopback`, `linklocal`, `uniquelocal`, IP addresses and CIDRs (default `loopback,uniquelocal`). |
+| `WEB_HOST`                    | No       | Listen address when the web runs on the host (default `127.0.0.1`); the container always listens on `0.0.0.0` inside its network. |
 
 \* Required for the Docker stack (`docker-compose.yml`) and for `docker-compose.dev.yml --profile storage`. With `STORAGE_DRIVER=memory` on the host, only the Lavalink variables are needed.
 
 \*\* Only needed when the bot runs directly on the host (`npm run dev` / `npm start`). `docker-compose.yml` ignores these variables and sets the hosts and URLs from the service names on Docker's private network.
+
+\*\*\* Required when the web dashboard is enabled (`COMPOSE_PROFILES=web`) or runs on the host (`npm run web:dev`, `npm run web:start`). The bot does not read them.
 
 In addition, the Docker image presets `HEARTBEAT_FILE=/tmp/perry-heartbeat`: the bot writes a timestamp to this file every 15 seconds while connected to Discord, and the image's `HEALTHCHECK` reads it (`node dist/healthcheck.js`; the file must be newer than 60 seconds). This variable does not need to be set in `.env`; when it is empty the bot writes no file.
 
@@ -383,7 +396,7 @@ npm run build && npm start
 npm run dev
 ```
 
-Static checks: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check-commands`. Unit tests (v1.4): `npm test` runs the `src/**/*.test.ts` files with Node's built-in `node:test` through `tsx`; they need neither Docker nor network, and `npm run build` leaves them out of `dist/`.
+Static checks: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check-commands`. Unit tests (v1.4): `npm test` runs the `src/**/*.test.ts` and `web/**/*.test.ts` files with Node's built-in `node:test` through `tsx`; they need neither Docker nor network, and `npm run build` leaves them out of `dist/`. The web has its own checks, see [Local development](#local-development).
 
 ## Command list
 
@@ -480,7 +493,7 @@ v1.4 adds moderation commands. All their replies are only visible to the moderat
 - `/purge`: looks at the last 100 messages of the current channel or thread and deletes up to `amount` (1-100) of them, optionally only from one user. Pinned messages and messages older than 14 days are skipped. A purge writes a mod-log entry but no case.
 - Audit log: the bot sets the reason in Discord's audit log to `<moderator>: <reason>`.
 - PostgreSQL unavailable: `/ban`, `/unban`, `/kick` and `/timeout` still run and the reply says the case was not recorded; `/warn`, `/warnings` and `/case` answer that the records are temporarily unavailable. With `STORAGE_DRIVER=memory`, cases are only kept until the bot restarts.
-- The bot does not filter message content. Managing Discord's own AutoMod rules is planned for the web dashboard.
+- The bot does not filter message content itself. Discord's own AutoMod does, and the web dashboard manages four AutoMod rules for the bot (banned words, invite links, mention spam and Discord's keyword presets); see [Web dashboard](#web-dashboard).
 
 ## Leveling
 
@@ -498,9 +511,57 @@ v1.4 adds XP and levels. Leveling is off in every server until a manager turns i
 - `/xp add|remove user amount` (1-1,000,000), `/xp set user xp` (0-2,000,000,000) and `/xp reset user` (Manage Server; the reply is only visible to you) change a member's XP. The level follows the XP, also downwards, and the role rewards are updated. These changes are never announced.
 - Level-up messages: `/settings leveling announce` sends them to `Channel of the message` (default), `Configured channel` (set with the `channel` option, which alone also selects this mode; when the bot cannot post there it uses the message's channel), `Direct message` or nowhere (`Off`). The bot refuses a `channel` where it cannot post embeds (View Channel, Send Messages, Embed Links). The message mentions the member without pinging them and uses the server's language; a jump over several levels is announced once.
 - Role rewards: up to 25 rewards, one role per level (levels 1-1000). In `stack` mode (the default) members keep every reward up to their level; in `highest` mode only the reward of the highest level reached. The rewards are applied on a level-up and after `/xp`. The bot needs Manage Roles and its own role must sit above every reward role; managed roles and roles that are not below the bot's role are skipped and logged once.
-- Settings without a slash command: the XP multiplier, the ignored channels and roles, the role rewards and their mode, and the public leaderboard page are set in the web dashboard. Without it they keep their defaults (100 %, nothing ignored, no rewards, no public leaderboard).
+- Settings without a slash command: the XP multiplier, the ignored channels and roles, the role rewards and their mode, and the public leaderboard page are set in the [web dashboard](#web-dashboard). Without it they keep their defaults (100 %, nothing ignored, no rewards, no public leaderboard).
 - Deleting a channel or a role removes it from the leveling settings, and deleting a reward role deletes its reward. When the bot is removed from a server, the role rewards are deleted with the settings; member XP (and the moderation cases) are kept.
 - PostgreSQL unavailable: messages earn no XP meanwhile (nothing is queued), and `/rank`, `/leaderboard` and `/xp` answer that levels are temporarily unavailable. With `STORAGE_DRIVER=memory`, XP is only kept until the bot restarts.
+
+## Web dashboard
+
+v1.4 adds an optional website for server managers, built with Next.js 16 (App Router) and shadcn/ui on Tailwind CSS 4. It runs as the `web` service from the same image as the bot and stays off until you enable it. Every page is available in English and Vietnamese: the language comes from the switch in the header (kept in the `perry_lang` cookie), then the browser's language, then `DEFAULT_LOCALE`.
+
+Pages:
+
+- `/`: the landing page with the features, the invite link and the login button.
+- `/dashboard`: after you log in with Discord, the servers you can manage (you own them, or you have Administrator or Manage Server there). A server without the bot shows an invite button with that server preselected.
+- `/dashboard/<server id>`: one tab per area. A saved change reaches the bot within 5 seconds.
+  - General: language, DJ role, default volume, autoplay and its mode, 24/7 mode.
+  - Moderation: the mod-log channel and the DM to the user.
+  - Leveling: on or off, the XP multiplier (10-500 %), level-up messages and their channel, ignored channels and roles, the reward mode, up to 25 role rewards, and the public leaderboard switch.
+  - AutoMod: four Discord AutoMod rules owned by the bot: banned words (up to 1000 keywords and 100 allowed words), invite links, mention spam (a mention limit and optional raid protection) and Discord's keyword presets (profanity, sexual content, slurs). Each rule blocks the message and can also post an alert in a channel and, except the presets, time the member out; roles and channels can be exempted. The bot only edits the rules it created (named `Perry: ...`) and never touches other rules. Discord applies a change at once. This tab needs the bot's Manage Server permission.
+  - Leaderboard: the XP leaderboard, 25 members per page.
+- `/leaderboard/<server id>`: the public leaderboard (25 members per page, at most 40 pages), only while a manager has it turned on. It needs no login and works without JavaScript.
+- `/healthz`: `{"status":"ok"}` while PostgreSQL and Redis answer, otherwise 503; the container health check uses it.
+
+### Enabling the dashboard
+
+1. In the Developer Portal, copy the client secret and add the redirect (step 6 of [Create the bot application](#create-the-bot-application-and-get-the-token)).
+2. Run `./scripts/setup.sh --web`. It asks for `PUBLIC_URL` (the address users open, for example `https://perry.example.com`) and `DISCORD_CLIENT_SECRET` (hidden input), generates `SESSION_SECRET`, adds `web` to `COMPOSE_PROFILES` and prints the redirect to add. Unattended: `PUBLIC_URL=... DISCORD_CLIENT_SECRET=... ./scripts/setup.sh --non-interactive --web`.
+3. `make up` (or `./scripts/deploy.sh`) builds the image, starts the stack including `web` and waits until it is healthy. The web is published on `127.0.0.1:3000` only (`WEB_PORT` changes the host port).
+4. Put a reverse proxy with HTTPS in front of it: see [docs/DEPLOY.md](docs/DEPLOY.md#7-web-dashboard-behind-a-reverse-proxy) for Caddy and nginx examples.
+5. `./scripts/doctor.sh` now also prints the rows `env web`, `public url`, `session secret`, `container web`, `web health` and `web bridge`.
+
+### How the dashboard works
+
+- Login: Discord OAuth2 with the `identify` and `guilds` scopes. The session is kept in Redis for at most 7 days, or until the Discord token expires if that comes first; then you log in again (refresh tokens are not kept). The browser only holds a random session id in an HttpOnly, SameSite=Lax cookie (`__Host-perry_sid` on https), and Redis only stores a SHA-256 hash of it. The Discord access token is stored encrypted with AES-256-GCM under a key derived from `SESSION_SECRET`, so changing `SESSION_SECRET` logs everyone out. Logging out deletes the session and revokes the token.
+- Permissions: the web reads your server list from Discord with your token and caches it for 60 seconds. Every page and every save checks again that you own the server or have Administrator or Manage Server there, and that the bot is in it.
+- The web never holds the bot token. It reads and writes the settings, levels and role rewards in PostgreSQL. Through Redis it asks the bot for a server's channels and roles (cached for 60 seconds; the refresh button reloads them) and for AutoMod rule changes. The bot publishes its server list in Redis every 60 seconds and 2 seconds after it joins or leaves a server.
+- Saves: the web writes PostgreSQL and clears the bot's cached copy of the settings in Redis. The bot uses the new values within 5 seconds, or at once with `PUBSUB_INVALIDATION=true`. Role rewards apply at the next level-up or `/xp` change.
+- While the bot is stopped, or more than 180 seconds after it crashed, the dashboard pages show "Temporarily unavailable" and the API answers 503 `bot_unavailable`. The landing page, login and logout keep working.
+- Rate limits: 20 logins per 10 minutes per IP address; per user 120 API calls, 30 saves and 6 channel and role refreshes per minute; 60 public leaderboard views per minute per IP address. The client IP address comes from `X-Forwarded-For` (see `WEB_TRUST_PROXY`).
+
+### Local development
+
+```bash
+make dev-infra            # PostgreSQL, Redis and Lavalink on 127.0.0.1
+npm run db:migrate
+npm run dev               # the bot, in a first terminal
+npm run web:dev           # the web on http://localhost:3000, in a second terminal
+```
+
+- `.env` needs `PUBLIC_URL=http://localhost:3000`, `DISCORD_CLIENT_SECRET` and `SESSION_SECRET` (`./scripts/setup.sh --web` asks for the first two and generates the third), and the Developer Portal needs the redirect `http://localhost:3000/auth/callback`. In development the web reads the repository's `.env` like the bot, so both use the same `DATABASE_URL`, `REDIS_URL` and `REDIS_KEY_PREFIX`.
+- `next dev` listens on every network interface; `npm run web:dev -- --hostname 127.0.0.1` keeps it on this machine. In development the CSP also allows `'unsafe-eval'`, which Next.js needs.
+- Production build on the host: `npm run web:build`, then `npm run web:start`. The standalone server listens on `WEB_HOST:WEB_PORT` (default `127.0.0.1:3000`) and does not read `.env`, so export the variables first.
+- Checks: `npm run web:typecheck`, `npm run lint` (covers `web/` too), `npm test` (runs `web/**/*.test.ts` too), `npm run web:build` and `npm run web:check`. `web:check` scans the web sources and the build output and fails on any mention of `DISCORD_TOKEN`, discord.js or the Lavalink client in the web bundle, Server Actions, `dangerouslySetInnerHTML`, and server-only packages or secrets in browser code.
 
 ## Language
 
@@ -526,6 +587,11 @@ v1.4 adds XP and levels. Leveling is off in every server until a manager turns i
 - **Limits of the SSRF filter**: the filter only checks the host name written in the link. It does not resolve DNS (a domain that points to an internal address still gets through) and does not follow redirects. If you run the bot publicly, add network-level limits for the Lavalink container (block egress to internal, link-local and cloud metadata IP ranges).
 - PostgreSQL and Redis both require a password (and are not published in the production stack). Connection strings, passwords and `LASTFM_API_KEY` are redacted from logs and errors. `PLAY_HISTORY=true` stores the requester ID of each track; only enable it when needed and tell your users.
 - The bot opens no HTTP port; it only makes outbound connections to Discord and Lavalink. The container health check uses a heartbeat file, not a network port.
+- Web dashboard (v1.4, optional): the `web` service publishes one port, bound to `127.0.0.1` (`WEB_PORT`, default 3000), for a reverse proxy on the same host that serves HTTPS. Docker-published ports bypass `ufw`, but other machines cannot reach a `127.0.0.1` binding. `doctor.sh` fails the `published ports` row for any other published port. The web container runs like the bot: the `node` user, a read-only root filesystem, `cap_drop: ALL`, `no-new-privileges`, and only the `data` network.
+- The web holds no bot token: `DISCORD_TOKEN` is not passed to it, and `npm run web:check` fails if the web code or bundle mentions it or contains discord.js. To read a server's channels and roles or to change AutoMod rules, the web sends a request to the bot through Redis. The bot answers only these requests (server data, list the AutoMod rules, save one AutoMod rule) and only touches the AutoMod rules it created. Anyone who can write to Redis can send such requests, so keep Redis on the internal network with its password, as the compose stack does.
+- Content Security Policy of the web: scripts run only with a nonce that changes on every response (`script-src 'self' 'nonce-...' 'strict-dynamic'`), so an injected `<script>` or inline event handler does not run. Styles allow `'unsafe-inline'`, because the Radix/shadcn components and the Next.js error pages render inline `style` attributes on the server; without it, popovers and the hidden native select are placed or shown wrongly. The cost is that injected CSS would apply, which first needs an HTML injection that React's escaping prevents. The web also sends `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` and a strict referrer policy; HSTS is left to the reverse proxy.
+- Every change (POST, PUT, PATCH, DELETE) needs the session's CSRF token and an `Origin` (or `Referer`) that matches `PUBLIC_URL`. Request bodies are size-limited and strictly validated (unknown fields are rejected), the access check runs on every page and API call, and Server Actions are not used.
+- The dashboard's channel and role pickers list every channel the bot can see, including private channels that the manager may not be able to open in Discord. Managers are trusted with these names; only give Manage Server to people you trust with them.
 - Minimal intents: `Guilds`, `GuildVoiceStates` and `GuildMessages` (none privileged; message content is not read).
 
 ## Known limitations
@@ -536,10 +602,11 @@ v1.4 adds XP and levels. Leveling is off in every server until a manager turns i
 - **Settings and queues**: settings are persisted with `persistent`; queues are only restored under the conditions in "Restore after restart". `/radio` state is in memory only and is lost when the bot restarts. Losing the Lavalink node (while the bot keeps running) does not restore the queue.
 - **Suggestions**: `lastfm` needs an API key and `lavasrc` needs credentials for the matching service; without them, the provider chain is reduced to `ytmix` and `artist`. YouTube Mix quality can change with YouTube.
 - **Multiple processes**: cooldowns and rate limits use Redis so they can be shared, but running several processes has not been verified.
-- **24/7 mode**: exists in the code but has no command to enable it yet; off by default.
+- **24/7 mode**: has no slash command; turn it on in the web dashboard (General tab). Off by default.
 - **One Lavalink node**: only one node is used, with no load balancing across nodes.
 - **Moderation**: only actions taken through the bot's commands are recorded; bans, kicks and timeouts done in Discord's own menus create no case and no mod-log entry. `/purge` only looks at the last 100 messages and cannot delete messages older than 14 days. There are no temporary bans and no automatic punishment after a number of warnings.
 - **Leveling**: no XP is granted while PostgreSQL is unavailable (nothing is queued); the `memory` storage driver keeps XP only until the bot restarts. There is no voice XP, no rank image card, no XP decay and no server-wide reset. The XP multiplier, the ignored lists and the role rewards can only be changed in the web dashboard.
+- **Web dashboard**: losing Manage Server in Discord can take up to 60 seconds to reach the dashboard (the server list is cached). The bridge assumes a single bot process. Turning 24/7 off while the bot idles in a channel takes effect at the next voice or queue event (someone joins or leaves, a track ends), and a language change re-renders an active "Now playing" message only at its next update. The whole dashboard answers 503 `bot_unavailable` while the bot is stopped or more than 180 seconds after a crash (the landing page and login still work). The bot and web clocks must agree within about 1 second, because the bot drops bridge requests whose deadline has passed; one host, as in the compose stack, is fine. The web depends on the webpack builder of Next.js (`--webpack`), because Turbopack cannot map the bot's `.js` import specifiers to its `.ts` files.
 - Bandcamp and Twitch only accept links (no search). Stage channels are not supported yet.
 - `bcsearch:` is not a Lavalink feature, so there is no Bandcamp search.
 
@@ -616,7 +683,20 @@ Verified in v1.4 (moderation; no real Discord token, throwaway PostgreSQL 18.6 /
 
 Verified in v1.4 (leveling; no real Discord token, throwaway PostgreSQL 18.6 / Redis 8.8.3 containers): `npm run typecheck`, `lint`, `build`, `check-commands` (38 commands) and `npm test` pass; the 26 existing commands other than `/settings` serialize exactly as before and `/settings` only gains `mod-log`, `mod-dm` and `leveling`; `/leaderboard page` is limited to 1-10,000 and the `/xp` options to 1-1,000,000 and 0-2,000,000,000; migration `0003_leveling` applies on an empty database and on one that only has `0000`-`0002` (4 rows in `drizzle.__drizzle_migrations`), and its constraints reject a negative XP and a reward role used twice; the XP formulas match the level table (the closed form equals a running sum up to level 1100); 50 parallel grants for one member add up exactly and report each level-up once; grants racing `/xp set 0`, and `/xp add` on a member without a row racing 20 grants, never leave the level above the XP, never fail and never mark PostgreSQL unavailable; on 50,000 seeded members the leaderboard page reads `member_levels_guild_xp_idx` without a sort and every rank equals the leaderboard position, ties included; parallel deletions of ignored channels and roles (also during a PostgreSQL outage, and against a value another process wrote) leave no deleted id behind; v1.3 and earlier v1.4 Redis settings entries decode with the leveling defaults; a `BotClient` built with a fake configuration requests exactly `Guilds`, `GuildVoiceStates` and `GuildMessages`; the message handler, `/rank`, `/leaderboard`, `/xp` and `/settings leveling` behave as described above with stub Discord objects; an offline start of the built bot applies the 4 migrations and stops at exactly one `Login failed` line.
 
-Suggested quick test on a real server: `/play never gonna give you up`, `/pause`, `/resume`, `/skip`, `/queue` and the buttons on the "Now playing" message; then `/settings language` with each choice; then `/settings mod-log`, `/warn` and `/case view` on a test member; then `/settings leveling enabled:true`, a few messages a minute apart, `/rank` and `/leaderboard`.
+Not verified in v1.4 (web dashboard):
+
+- A real Discord login: the consent screen, the code exchange, `/users/@me`, the user's server list and the token revocation against Discord. No client secret was available; the flow ran against a local stub of these Discord endpoints.
+- Real server data in the pickers, and the Redis bridge with a bot connected to the Discord gateway (the bot side of the bridge ran with stub Discord objects).
+- Creating, editing and disabling AutoMod rules in a real server, and how Discord enforces them.
+- Re-inviting the bot to add Manage Server to its role in a server that already has it.
+- The reverse proxy examples (Caddy, nginx) on a real server with real certificates and HSTS.
+- Browsers other than headless Chrome on macOS (used for the screenshots and the CSP check), and real mobile devices.
+- The web in the `linux/amd64` image on a real amd64 machine (only emulation), and the glibc x64 build bindings of Next.js, Tailwind and lightningcss, which first run in CI.
+- The new web steps of `ci.yml` on GitHub Actions (only re-run locally).
+
+Verified in v1.4 (web dashboard; no real Discord credentials, throwaway PostgreSQL 18.6 / Redis 8.8.3 containers, Docker 27.5.1 on macOS arm64): `npm run typecheck`, `lint`, `build`, `check-commands`, `npm test`, `web:typecheck`, `web:build` and `web:check` pass, also from a tree without generated files; a web route that imports bot code depending on discord.js fails the build; the npm workspace adds packages to the lockfile without changing any existing one; the standalone output is about 33 MB, contains no source maps, sharp, discord.js or bot token, and adds 40 MB to the image (241 MB on arm64, 246 MB on amd64 built through emulation); the web container runs as uid 1000 on a read-only root filesystem without write errors and is published on `127.0.0.1` only; `/healthz`, the landing page, the language switch (cookie, `?lang`, `Accept-Language`), the CSP with a fresh nonce on every script, the static headers, 404 for files outside `public/`, Server Action requests and path traversal; the OAuth flow against a local Discord stub (state cookie, single-use state, malformed code, sealed token in Redis, session lifetime, logout, a changed `SESSION_SECRET`), the login rate limit (429 with `Retry-After`); CSRF (missing or wrong token, foreign `Origin`), body limits (415, 413 also for chunked bodies, strict schemas), 403 for a server the user cannot manage and 404 with an invite link when the bot is missing; every dashboard page in both languages; the settings writes (PostgreSQL row, Redis key deleted, pub/sub message, the delayed second delete), with propagation to a running bot store in 5 ms with pub/sub and within 5 seconds without; the channel, role and reward checks (unknown, wrong type, the bot cannot post, managed or too high roles, 25 rewards, duplicate levels, stale ids dropped); 20 rounds of concurrent reward saves from bot and web with one winner each; the leaderboard pages, the public leaderboard (404 while off, 30 s cache, cleared when turned off); AutoMod create, edit, disable and list through the bridge, and a 175 KB body of 1000 Vietnamese keywords; 503 `bot_unavailable` within 15 ms when no bot listens and while the server list is missing, the "Temporarily unavailable" notice and 503 answers while Redis is down with recovery in 2 seconds; startup with missing variables (exit 1, names only); `setup.sh --web`, `doctor.sh`, `deploy.sh` and `restore.sh` with the web profile; `docker compose --profile web config` and build; 9 pages captured in headless Chrome with no console messages and no CSP violations; no secret, token, session id or CSRF token in any log.
+
+Suggested quick test on a real server: `/play never gonna give you up`, `/pause`, `/resume`, `/skip`, `/queue` and the buttons on the "Now playing" message; then `/settings language` with each choice; then `/settings mod-log`, `/warn` and `/case view` on a test member; then `/settings leveling enabled:true`, a few messages a minute apart, `/rank` and `/leaderboard`; then log in to the dashboard, change the default volume and check it with `/settings view`.
 
 ## Legal notice
 
@@ -655,6 +735,7 @@ src/
   events/             Discord events (ready, guildDelete, guildRoleDelete, channelDelete, messageCreate, interaction, voice state)
   moderation/         Moderation: target checks, durations, limits, the action pipeline, mod log, permission helpers
   leveling/           Leveling: XP formulas, eligibility rules, role reward diff, the message handler (leveling-service.ts)
+  bridge/             The bot side of the Redis bridge to the web: server data, Discord AutoMod rules, request handling
   interactions/       Command, button and autocomplete handling, cooldowns
   music/              Lavalink, queue, guards, controls, search, lyrics
     discovery/        Suggestion engine, autoplay, filters and providers (providers/)
@@ -669,10 +750,18 @@ src/
   types/ utils/       Shared types, logger, errors, pagination, embeds
   startup/            Migrations on startup (advisory lock) and hash-based slash command registration
   health/             Heartbeat for Docker's HEALTHCHECK (healthcheck.ts in src/ runs as node dist/healthcheck.js)
+web/                  Web dashboard (v1.4): npm workspace perry-web, Next.js 16 App Router with shadcn/ui; imports src/ code without discord.js
+  app/                Pages and Route Handlers: landing, /dashboard, /leaderboard, /auth, /api, /healthz
+  components/         React components (ui/: shadcn/ui, landing/, dashboard/)
+  server/             Server-only code: config, sessions, OAuth, CSRF, rate limits, bridge client, settings writer, API handlers
+  shared/             Code for server and browser: API schemas and types, i18n catalogs (en, vi), CSP
+  lib/                Browser helpers (api-client.ts)
+  proxy.ts            Per-request CSP nonce and locale for pages
+  instrumentation.ts  Validates the web configuration and connects to PostgreSQL and Redis on startup
 scripts/              Bash: setup, deploy, update, backup, restore, doctor, logs (+ lib/common.sh);
                       tsx: deploy-commands.ts, check-commands.ts, db-migrate.ts
-Dockerfile            Multi-stage bot image (Node 24 alpine, runs as the node user), with .dockerignore
-docker-compose.yml    Production stack: bot, lavalink-init, lavalink, postgres, redis (no published ports)
+Dockerfile            Multi-stage image (Node 24 alpine, runs as the node user): the bot and the web's standalone server, with .dockerignore
+docker-compose.yml    Production stack: bot, lavalink-init, lavalink, postgres, redis, and web with COMPOSE_PROFILES=web (only web publishes a port, on 127.0.0.1)
 docker-compose.dev.yml  Dev infrastructure: Lavalink (+ PostgreSQL, Redis with --profile storage), binds 127.0.0.1
 Makefile              Shortcuts calling scripts/ or docker compose (make help)
 .github/workflows/    ci.yml (checks, image build, compose validation) and release.yml (pushes a multi-arch image to GHCR on v* tags)
