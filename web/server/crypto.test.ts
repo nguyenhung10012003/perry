@@ -16,7 +16,8 @@ describe('crypto', () => {
   it('tampering and a different secret are detected', () => {
     const sealed = seal(key, 'token');
     const [v, iv, ct = '', tag] = sealed.split('.');
-    const flipped = `${v}.${iv}.${ct.endsWith('A') ? `${ct.slice(0, -1)}B` : `${ct.slice(0, -1)}A`}.${tag}`;
+    // Change the first character: all six of its bits are data, while the last one may only hold padding bits.
+    const flipped = `${v}.${iv}.${ct.startsWith('A') ? 'B' : 'A'}${ct.slice(1)}.${tag}`;
     assert.equal(open(key, flipped), null);
     assert.equal(open(deriveSealKey('t'.repeat(64)), sealed), null);
     assert.equal(open(key, 'v2.a.b.c'), null);
