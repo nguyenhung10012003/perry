@@ -6,6 +6,9 @@
   "engines": {
     "node": ">=22.13.0"
   },
+  "workspaces": [
+    "web"
+  ],
   "scripts": {
     "build": "npm run clean && tsc -p tsconfig.build.json",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
@@ -15,7 +18,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "deploy-commands": "tsx scripts/deploy-commands.ts",
     "check-commands": "tsx scripts/check-commands.ts",
-    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "test": "node --conditions=react-server --import tsx --test \"src/**/*.test.ts\" \"web/**/*.test.ts\"",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/db-migrate.ts",
     "dev:lavalink": "docker compose -f docker-compose.dev.yml up -d lavalink",
@@ -26,7 +29,13 @@
     "docker:up": "./scripts/deploy.sh",
     "docker:down": "docker compose down",
     "docker:logs": "./scripts/logs.sh",
-    "docker:ps": "docker compose ps"
+    "docker:ps": "docker compose ps",
+    "web:dev": "next dev web --webpack --port 3000",
+    "web:typegen": "next typegen web",
+    "web:typecheck": "next typegen web && tsc -p web/tsconfig.json --noEmit",
+    "web:build": "next build web --webpack && node web/finish-standalone.mjs",
+    "web:start": "node web/.next/standalone/start.cjs",
+    "web:check": "node web/check-bundle.mjs"
   },
   "dependencies": {
     "discord.js": "14.27.0",
@@ -40,10 +49,12 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@next/eslint-plugin-next": "16.4.2",
     "@types/node": "24.19.2",
     "@types/pg": "8.23.1",
     "drizzle-kit": "0.31.11",
     "eslint": "10.12.0",
+    "eslint-plugin-react-hooks": "7.1.1",
     "globals": "17.13.0",
     "tsx": "4.23.15",
     "typescript": "6.0.3",

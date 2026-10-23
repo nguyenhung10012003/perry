@@ -13,3 +13,7 @@ logs
 backups/
 .vscode/
 .worktrees/
+# Next.js build output and generated types (web workspace)
+web/.next/
+web/next-env.d.ts
+*.tsbuildinfo
