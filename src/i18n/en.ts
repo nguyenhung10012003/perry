@@ -264,6 +264,7 @@ export const en = {
     ManageMessages: "Manage Messages",
     ReadMessageHistory: "Read Message History",
     ManageGuild: "Manage Server",
+    ManageRoles: "Manage Roles",
   },
   ping: {
     title: "🏓 Pong!",
@@ -512,6 +513,12 @@ export const en = {
       footer: (page: number, totalPages: number, total: number) =>
         `Page ${page}/${totalPages} • ${plural(total, "warning", "warnings")}`,
     },
+  },
+  leveling: {
+    levelUp: (mention: string, level: number) =>
+      `🎉 ${mention} reached level **${level}**!`,
+    rewardsGained: (roleMentions: string[]) =>
+      `🎁 New ${roleMentions.length === 1 ? "role" : "roles"}: ${roleMentions.join(", ")}`,
   },
   filters: {
     names: {

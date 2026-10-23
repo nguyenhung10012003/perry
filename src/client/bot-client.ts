@@ -1,7 +1,8 @@
-import { Client, Collection, GatewayIntentBits } from 'discord.js';
+import { Client, Collection, GatewayIntentBits, Options } from 'discord.js';
 import type { Config } from '../config/env.js';
 import { getMessages, resolveLocale } from '../i18n/index.js';
 import type { Locale, Messages } from '../i18n/index.js';
+import { LevelingService } from '../leveling/leveling-service.js';
 import { MusicService } from '../music/music-service.js';
 import type { GuildSettingsStore } from '../settings/guild-settings.js';
 import type { Storage } from '../storage/types.js';
@@ -16,11 +17,15 @@ export class BotClient extends Client {
   readonly storage: Storage;
   readonly settings: GuildSettingsStore;
   readonly music: MusicService;
+  readonly leveling: LevelingService;
   shuttingDown = false;
 
   constructor(config: Config, logger: Logger, storage: Storage) {
     super({
-      intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
+      // GuildMessages (not privileged) delivers messageCreate for XP; the message content is not needed.
+      intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMessages],
+      // Nothing reads the message cache, so keep it small instead of 200 messages per channel.
+      makeCache: Options.cacheWithLimits({ ...Options.DefaultMakeCacheSettings, MessageManager: 25 }),
       allowedMentions: { parse: [] },
     });
     this.config = config;
@@ -28,6 +33,7 @@ export class BotClient extends Client {
     this.storage = storage;
     this.settings = storage.settings;
     this.music = new MusicService(this);
+    this.leveling = new LevelingService(this);
   }
 
   /** Effective language of a guild: its `language` setting, otherwise DEFAULT_LOCALE (also for DMs or a failed read). */

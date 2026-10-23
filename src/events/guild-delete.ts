@@ -4,8 +4,9 @@ import type { BotEvent } from './index.js';
 
 /**
  * The bot was removed from a guild (discord.js only emits this for real removals, not outages):
- * drop its player, timers and settings so nothing lingers. lavalink-client does not react to a guild
- * removal on its own, so without this the player would stay registered forever.
+ * drop its player, timers, settings and level rewards so nothing lingers (DP-8 (b): member XP and moderation cases
+ * are kept). lavalink-client does not react to a guild removal on its own, so without this the player would stay
+ * registered forever.
  */
 export const guildDelete: BotEvent<Events.GuildDelete> = {
   name: Events.GuildDelete,
@@ -17,6 +18,7 @@ export const guildDelete: BotEvent<Events.GuildDelete> = {
       client.music.disposeState(guild.id);
     }
     await client.settings.reset(guild.id);
+    await client.storage.levels.deleteRewards(guild.id);
     await client.storage.purgeGuild(guild.id);
   },
 };

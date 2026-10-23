@@ -5,6 +5,7 @@ import { clientReady } from "./client-ready.js";
 import { guildDelete } from "./guild-delete.js";
 import { guildRoleDelete } from "./guild-role-delete.js";
 import { interactionCreate } from "./interaction-create.js";
+import { messageCreate } from "./message-create.js";
 import { voiceStateUpdate } from "./voice-state-update.js";
 
 export interface BotEvent<K extends keyof ClientEvents = keyof ClientEvents> {
@@ -20,5 +21,6 @@ export const events: BotEvent<keyof ClientEvents>[] = [
   guildDelete,
   guildRoleDelete,
   interactionCreate,
+  messageCreate,
   voiceStateUpdate,
 ];

@@ -254,6 +254,7 @@ export const vi: Messages = {
     ManageMessages: "Quản lý tin nhắn",
     ReadMessageHistory: "Đọc lịch sử tin nhắn",
     ManageGuild: "Quản lý máy chủ",
+    ManageRoles: "Quản lý vai trò",
   },
   ping: {
     title: "🏓 Pong!",
@@ -495,6 +496,12 @@ export const vi: Messages = {
       footer: (page: number, totalPages: number, total: number) =>
         `Trang ${page}/${totalPages} • ${total} cảnh cáo`,
     },
+  },
+  leveling: {
+    levelUp: (mention: string, level: number) =>
+      `🎉 ${mention} đã đạt cấp **${level}**!`,
+    rewardsGained: (roleMentions: string[]) =>
+      `🎁 Vai trò mới: ${roleMentions.join(", ")}`,
   },
   filters: {
     names: {
