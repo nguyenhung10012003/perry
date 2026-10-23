@@ -1,6 +1,14 @@
 import type { Command } from "../types/command.js";
 import { help } from "./general/help.js";
 import { ping } from "./general/ping.js";
+import { ban } from "./moderation/ban.js";
+import { modCase } from "./moderation/case.js";
+import { kick } from "./moderation/kick.js";
+import { purge } from "./moderation/purge.js";
+import { timeout } from "./moderation/timeout.js";
+import { unban } from "./moderation/unban.js";
+import { warn } from "./moderation/warn.js";
+import { warnings } from "./moderation/warnings.js";
 import { autoplay } from "./music/autoplay.js";
 import { clear } from "./music/clear.js";
 import { filter } from "./music/filter.js";
@@ -57,6 +65,15 @@ export const commands: Command[] = [
   autoplay,
   radio,
   similar,
+  // moderation
+  ban,
+  unban,
+  kick,
+  timeout,
+  warn,
+  warnings,
+  modCase,
+  purge,
   // settings
   settings,
 ];

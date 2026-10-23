@@ -1,8 +1,9 @@
-import { MessageFlags, PermissionFlagsBits } from "discord.js";
+import { ChannelType, MessageFlags, PermissionFlagsBits } from "discord.js";
 import { MAX_VOLUME } from "../../config/constants.js";
 import { getMessages, isLocale, LOCALE_NAMES, resolveLocale } from "../../i18n/index.js";
 import { refreshNowPlaying } from "../../music/now-playing.js";
 import type { Command } from "../../types/command.js";
+import { postableTextChannel } from "../../utils/channels.js";
 import { baseEmbed } from "../../utils/embeds.js";
 import { replyError, replyInfo } from "../../utils/respond.js";
 import { choice, createCommand, describe } from "../builder.js";
@@ -39,6 +40,20 @@ export const settings: Command = {
               { name: LOCALE_NAMES.vi, value: "vi" },
               choice("default", (m) => m.commands.settings.language.default),
             ),
+        ),
+    )
+    .addSubcommand((sub) =>
+      describe(sub.setName("mod-log"), (m) => m.commands.settings.modLog.description)
+        .addChannelOption((option) =>
+          describe(option.setName("channel"), (m) => m.commands.settings.modLog.channel)
+            .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement),
+        ),
+    )
+    .addSubcommand((sub) =>
+      describe(sub.setName("mod-dm"), (m) => m.commands.settings.modDm.description)
+        .addBooleanOption((option) =>
+          describe(option.setName("enabled"), (m) => m.commands.settings.modDm.enabled)
+            .setRequired(true),
         ),
     ),
   category: "settings",
@@ -89,6 +104,18 @@ export const settings: Command = {
               value: current.language
                 ? LOCALE_NAMES[current.language]
                 : t.settings.languageDefault(LOCALE_NAMES[client.config.defaultLocale]),
+              inline: true,
+            },
+            {
+              name: t.settings.modLog,
+              value: current.modLogChannelId
+                ? `<#${current.modLogChannelId}>`
+                : t.settings.notSet,
+              inline: true,
+            },
+            {
+              name: t.settings.modDm,
+              value: current.modDmTarget ? t.settings.on : t.settings.off,
               inline: true,
             },
           );
@@ -145,6 +172,28 @@ export const settings: Command = {
         );
         // An active Now-Playing message re-renders in the new language.
         refreshNowPlaying(client.music, guildId);
+        return;
+      }
+      case "mod-log": {
+        const channel = interaction.options.getChannel("channel");
+        if (!channel) {
+          await client.settings.update(guildId, { modLogChannelId: null });
+          await replyInfo(interaction, t.settings.modLogCleared);
+          return;
+        }
+        // The bot must be able to post embeds there, else every case would silently miss the log.
+        if (!postableTextChannel(client, channel.id)) {
+          await replyError(interaction, t.settings.modLogNoAccess);
+          return;
+        }
+        await client.settings.update(guildId, { modLogChannelId: channel.id });
+        await replyInfo(interaction, t.settings.modLogSet(channel.id));
+        return;
+      }
+      case "mod-dm": {
+        const enabled = interaction.options.getBoolean("enabled", true);
+        await client.settings.update(guildId, { modDmTarget: enabled });
+        await replyInfo(interaction, t.settings.modDmSet(enabled));
         return;
       }
       default:
