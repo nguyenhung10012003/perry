@@ -16,9 +16,12 @@ concurrency:
 
 jobs:
   node:
-    name: Typecheck, lint, build
+    name: Typecheck, lint, build, test, web
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    env:
+      # Next.js telemetry stays off in CI (nothing is sent to Vercel).
+      NEXT_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -27,10 +30,16 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      # Type-aware linting of web/ needs the generated Next.js route types.
+      - run: npm run web:typegen
       - run: npm run lint
       - run: npm run build
       - run: npm run check-commands
       - run: npm test
+      - run: npm run web:typecheck
+      - run: npm run web:build
+      # Bundle boundary: no discord.js, bot token or server-only module in the web build output.
+      - run: npm run web:check
 
   docker:
     name: Docker image, scripts, compose
@@ -66,6 +75,7 @@ jobs:
         run: |
           set -euo pipefail
           docker compose config -q
+          docker compose --profile web config -q
           docker compose -f docker-compose.dev.yml config -q
           # Lavalink/Postgres/Redis must use the same tags in both files.
           prod=$(docker compose config --images | grep -v '^perry-bot:' | sort -u)
