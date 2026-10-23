@@ -8,6 +8,10 @@
 const plural = (n: number, one: string, many: string): string =>
   `${n} ${n === 1 ? one : many}`;
 
+/** " (case #n)", or nothing when the case could not be recorded. */
+const caseRef = (n: number | null): string =>
+  n === null ? "" : ` (case #${n})`;
+
 export const en = {
   commands: {
     ping: { description: "Check the bot's latency" },
@@ -95,6 +99,82 @@ export const en = {
     similar: {
       description: "Browse and add tracks similar to the current track",
     },
+    ban: {
+      description: "Ban a user from this server",
+      user: "User to ban (also works for users who are not in the server)",
+      reason: "Reason (shown in the audit log and the mod log)",
+      deleteMessages: "Delete the user's recent messages",
+      deleteChoices: {
+        none: "Don't delete any",
+        "1h": "Previous hour",
+        "6h": "Previous 6 hours",
+        "12h": "Previous 12 hours",
+        "24h": "Previous 24 hours",
+        "3d": "Previous 3 days",
+        "7d": "Previous 7 days",
+      },
+    },
+    unban: {
+      description: "Lift the ban of a user",
+      user: "User ID or mention of the banned user",
+      reason: "Reason (shown in the audit log and the mod log)",
+    },
+    kick: {
+      description: "Kick a member from this server",
+      user: "Member to kick",
+      reason: "Reason (shown in the audit log and the mod log)",
+    },
+    timeout: {
+      description: "Time out a member or remove a timeout",
+      set: {
+        description: "Time out a member",
+        user: "Member to time out",
+        duration: "Duration, e.g. 10m, 1h30m or 7d (at most 28d)",
+        reason: "Reason (shown in the audit log and the mod log)",
+      },
+      remove: {
+        description: "Remove the timeout of a member",
+        user: "Member whose timeout to remove",
+        reason: "Reason (shown in the audit log and the mod log)",
+      },
+    },
+    warn: {
+      description: "Warn a member",
+      user: "Member to warn",
+      reason: "Reason for the warning",
+    },
+    warnings: {
+      description: "Show or delete the warnings of a user",
+      list: {
+        description: "Show the warnings of a user",
+        user: "User whose warnings to show",
+      },
+      clear: {
+        description: "Delete every warning of a user (needs Manage Server)",
+        user: "User whose warnings to delete",
+      },
+    },
+    case: {
+      description: "Show or edit moderation cases",
+      view: {
+        description: "Show a case",
+        number: "Case number",
+      },
+      reason: {
+        description: "Change the reason of a case",
+        number: "Case number",
+        reason: "New reason",
+      },
+      delete: {
+        description: "Delete a case (needs Manage Server)",
+        number: "Case number",
+      },
+    },
+    purge: {
+      description: "Delete recent messages in this channel",
+      amount: "Number of messages to delete (1-100)",
+      user: "Only delete messages from this user",
+    },
     settings: {
       description: "Bot settings for this server",
       view: { description: "Show the current settings" },
@@ -111,10 +191,19 @@ export const en = {
         locale: "Language to use",
         default: "Bot default",
       },
+      modLog: {
+        description: "Set or clear the moderation log channel",
+        channel: "Channel for the mod log (leave empty to turn it off)",
+      },
+      modDm: {
+        description: "Turn the DM to moderated users on or off",
+        enabled: "DM the user on a ban, kick, timeout or warning",
+      },
     },
   },
   categories: {
     music: "🎵 Music",
+    moderation: "🛡️ Moderation",
     general: "🧰 General",
     settings: "⚙️ Settings",
   },
@@ -169,6 +258,12 @@ export const en = {
     Speak: "Speak",
     SendMessages: "Send Messages",
     EmbedLinks: "Embed Links",
+    BanMembers: "Ban Members",
+    KickMembers: "Kick Members",
+    ModerateMembers: "Timeout Members",
+    ManageMessages: "Manage Messages",
+    ReadMessageHistory: "Read Message History",
+    ManageGuild: "Manage Server",
   },
   ping: {
     title: "🏓 Pong!",
@@ -317,6 +412,106 @@ export const en = {
     languageReset: (name: string) =>
       `✅ Using the bot default language again (**${name}**).`,
     noPermission: "You need the Manage Server permission to use this command.",
+    modLog: "Mod log",
+    modLogSet: (channelId: string) =>
+      `✅ Mod log channel set to <#${channelId}>.`,
+    modLogCleared: "✅ Mod log turned off.",
+    modLogNoAccess:
+      "The bot can't post in that channel. It needs View Channel, Send Messages and Embed Links there.",
+    modDm: "DM on action",
+    modDmSet: (enabled: boolean) =>
+      `✅ DM on moderation actions: **${enabled ? "On" : "Off"}**.`,
+  },
+  moderation: {
+    self: "You can't use this on yourself.",
+    bot: "The bot can't moderate itself.",
+    owner: "The server owner can't be moderated.",
+    notMember: "That user is not a member of this server.",
+    invokerNotHigher:
+      "You can only act on members whose highest role is below yours.",
+    botNotHigher:
+      "The bot's highest role must be above the member's highest role. Move the bot's role up in Server Settings > Roles.",
+    targetAdmin: "Members with the Administrator permission can't be timed out.",
+    invokerMissing: (permission: string) =>
+      `You need the **${permission}** permission to use this command.`,
+    botMissing: (permissions: string[]) =>
+      `The bot is missing permissions: ${permissions.join(", ")}.`,
+    invalidUser:
+      "Enter a user ID or mention, e.g. `123456789012345678` or `<@123456789012345678>`.",
+    unknownUser: "No Discord user has that ID.",
+    notTimedOut: "That member is not timed out.",
+    invalidDuration:
+      "Invalid duration. Use numbers with s, m, h, d or w, e.g. `10m`, `1h30m` or `7d`.",
+    durationTooLong: "A timeout can last at most 28 days.",
+    alreadyBanned: "That user is already banned.",
+    notBanned: "That user is not banned.",
+    caseNotFound: "That case does not exist.",
+    purgeNoAccess: "The bot can't read or delete messages in this channel.",
+    storageUnavailable:
+      "Moderation records are temporarily unavailable. Please try again later.",
+    banned: (user: string, n: number | null) =>
+      `🔨 Banned **${user}**${caseRef(n)}.`,
+    unbanned: (user: string, n: number | null) =>
+      `🔓 Unbanned **${user}**${caseRef(n)}.`,
+    kicked: (user: string, n: number | null) =>
+      `👢 Kicked **${user}**${caseRef(n)}.`,
+    timedOut: (user: string, duration: string, n: number | null) =>
+      `⏳ Timed out **${user}** for ${duration}${caseRef(n)}.`,
+    timeoutRemoved: (user: string, n: number | null) =>
+      `✅ Removed the timeout of **${user}**${caseRef(n)}.`,
+    warned: (user: string, n: number | null) =>
+      `⚠️ Warned **${user}**${caseRef(n)}.`,
+    purged: (n: number) =>
+      `🧹 Deleted ${plural(n, "message", "messages")}.`,
+    purgeSkipped: (m: number) =>
+      `${plural(m, "message was", "messages were")} not deleted: only the last 100 messages are checked, and pinned messages, messages older than 14 days and (with a user filter) messages from other users are skipped.`,
+    caseReasonUpdated: (n: number) => `✏️ Updated the reason of case #${n}.`,
+    caseDeleted: (n: number) =>
+      `🗑 Deleted case #${n}. Its mod-log message stays.`,
+    warningsCleared: (user: string, count: number) =>
+      `🧹 Deleted ${plural(count, "warning", "warnings")} of **${user}**.`,
+    dmFailed: "The user could not be notified by DM.",
+    caseNotRecorded:
+      "The action was done, but the case could not be saved right now.",
+    dmAlreadySent: "The user was already notified by DM.",
+    dmBan: (guild: string) => `You are being banned from **${guild}**.`,
+    dmKick: (guild: string) => `You are being kicked from **${guild}**.`,
+    dmTimeout: (guild: string, duration: string) =>
+      `You have been timed out in **${guild}** for ${duration}.`,
+    dmWarn: (guild: string) => `You have received a warning in **${guild}**.`,
+    dmReason: (reason: string) => `Reason: ${reason}`,
+    log: {
+      caseTitle: (action: string, n: number | null) =>
+        n === null ? `${action} | Case not recorded` : `${action} | Case #${n}`,
+      notRecorded: "The case could not be saved, so it has no number.",
+      target: "User",
+      moderator: "Moderator",
+      reason: "Reason",
+      noReason: "No reason given",
+      duration: "Duration",
+      dm: "DM",
+      dmSent: "Sent",
+      dmNotSent: "Not sent",
+      dmOff: "Off",
+      purgeTitle: "Messages purged",
+      channel: "Channel",
+      count: "Deleted",
+      userFilter: "Only from",
+    },
+    actions: {
+      ban: "Ban",
+      unban: "Unban",
+      kick: "Kick",
+      timeout: "Timeout",
+      untimeout: "Timeout removed",
+      warn: "Warning",
+    },
+    warnings: {
+      title: (user: string) => `Warnings of ${user}`,
+      empty: "This user has no warnings.",
+      footer: (page: number, totalPages: number, total: number) =>
+        `Page ${page}/${totalPages} • ${plural(total, "warning", "warnings")}`,
+    },
   },
   filters: {
     names: {

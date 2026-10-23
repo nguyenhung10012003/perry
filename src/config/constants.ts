@@ -74,3 +74,20 @@ export const HEARTBEAT_INTERVAL_MS = 15_000;
 export const HEARTBEAT_MAX_AGE_MS = 60_000;
 export const COMMAND_HASH_TTL_SECONDS = 2_592_000;
 export const LOGIN_FAILURE_EXIT_DELAY_MS = 30_000;
+
+/** Moderation (v1.4). */
+export const MOD_REASON_MAX_LENGTH = 512;
+/** Discord's longest timeout: 28 days. */
+export const MOD_TIMEOUT_MAX_MS = 2_419_200_000;
+export const MOD_PURGE_MAX = 100;
+export const MOD_CASES_PAGE_SIZE = 10;
+/** `/ban delete_messages` choices (A8): seconds of message history to delete. */
+export const BAN_DELETE_SECONDS = {
+  none: 0,
+  '1h': 3600,
+  '6h': 21_600,
+  '12h': 43_200,
+  '24h': 86_400,
+  '3d': 259_200,
+  '7d': 604_800,
+} as const;

@@ -1,6 +1,7 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, MessageFlags } from 'discord.js';
 import type { ButtonInteraction, ChatInputCommandInteraction, EmbedBuilder } from 'discord.js';
 import type { Messages } from '../i18n/index.js';
+import { UserError } from './errors.js';
 
 export const PAGINATION_PREFIX = 'pg:';
 const IDLE_MS = 120_000;
@@ -48,14 +49,19 @@ function buildRow(page: number, totalPages: number, disabled: boolean, t: Messag
  * Only the user who ran the command can flip pages (120 s idle timeout, then the buttons are disabled).
  * Works for a fresh reply, a deferred reply (editReply) and button interactions. `t` (the guild's catalog)
  * labels the buttons and the owner-only notice.
+ *
+ * `render` may be async (database-backed pages): such callers defer before calling paginate(), and a page flip
+ * defers the button first, so a slow render cannot miss Discord's 3 s window. A UserError thrown by the first
+ * render reaches the command handler; one thrown on a page flip is answered with an ephemeral follow-up and the
+ * page stays as it was.
  */
 export async function paginate(
   interaction: ChatInputCommandInteraction<'cached'> | ButtonInteraction<'cached'>,
-  render: (page: number) => PageContent,
+  render: (page: number) => PageContent | Promise<PageContent>,
   t: Messages,
   options: PaginateOptions = {},
 ): Promise<void> {
-  const first = render(options.startPage ?? 1);
+  const first = await render(options.startPage ?? 1);
   const paged = first.totalPages > 1;
   const payload = {
     embeds: [first.embed],
@@ -81,6 +87,8 @@ export async function paginate(
     filter: (component) => component.customId.startsWith(PAGINATION_PREFIX),
   });
   let currentPage = first.page;
+  // The disabled row at the end is built from the last render instead of rendering again.
+  let lastTotalPages = first.totalPages;
 
   collector.on('collect', (component) => {
     void (async (): Promise<void> => {
@@ -90,9 +98,18 @@ export async function paginate(
           return;
         }
         const delta = component.customId === `${PAGINATION_PREFIX}next` ? 1 : -1;
-        const next = render(currentPage + delta);
+        await component.deferUpdate();
+        let next: PageContent;
+        try {
+          next = await render(currentPage + delta);
+        } catch (err) {
+          if (!(err instanceof UserError)) throw err;
+          await component.followUp({ content: err.localized(t), flags: MessageFlags.Ephemeral });
+          return;
+        }
         currentPage = next.page;
-        await component.update({
+        lastTotalPages = next.totalPages;
+        await interaction.editReply({
           embeds: [next.embed],
           components: [buildRow(next.page, next.totalPages, false, t)],
           allowedMentions: NO_MENTIONS,
@@ -104,13 +121,12 @@ export async function paginate(
   });
 
   collector.on('end', () => {
-    try {
-      const latest = render(currentPage);
-      interaction
-        .editReply({ components: [buildRow(latest.page, latest.totalPages, true, t)] })
-        .catch(() => undefined);
-    } catch {
-      // The renderer failed (e.g. player gone): leave the message as is.
-    }
+    void (async (): Promise<void> => {
+      try {
+        await interaction.editReply({ components: [buildRow(currentPage, lastTotalPages, true, t)] });
+      } catch {
+        // Interaction expired or message deleted: leave the message as is.
+      }
+    })();
   });
 }

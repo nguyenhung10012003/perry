@@ -12,9 +12,11 @@ import { BackendHealth } from './health.js';
 import { createKeys } from './keys.js';
 import type { Keys } from './keys.js';
 import { MemoryKeyValueCache } from './memory/memory-cache.js';
+import { MemoryCaseStore } from './memory/memory-cases.js';
 import { MemoryCooldownStore, MemoryRateLimiter } from './memory/memory-cooldowns.js';
 import { MemoryRecentlyPlayedStore } from './memory/memory-recent.js';
 import { NullSnapshotStore } from './memory/null-snapshots.js';
+import { PostgresCaseStore } from './postgres/case-repo.js';
 import { createPostgres, ensureSchema, SCHEMA_PROBE } from './postgres/client.js';
 import { recordPlay } from './postgres/history-repo.js';
 import type { PlayHistoryEntry } from './postgres/history-repo.js';
@@ -72,6 +74,7 @@ function createMemoryStorage(keys: Keys): Storage {
     recent,
     snapshots: new NullSnapshotStore(),
     history: noopHistory,
+    cases: new MemoryCaseStore(),
     health: { postgres: null, redis: null },
     keys,
     purgeGuild(guildId): Promise<void> {
@@ -175,6 +178,7 @@ async function createConfiguredStorage(config: Config, logger: Logger): Promise<
     recent,
     snapshots,
     history,
+    cases: new PostgresCaseStore(db, pgHealth),
     health: { postgres: pgHealth, redis: redisHealth },
     keys,
     async purgeGuild(guildId) {

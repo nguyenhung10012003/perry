@@ -1,5 +1,9 @@
 import type { Messages } from "./en.js";
 
+/** " (vụ #n)", or nothing when the case could not be recorded. */
+const caseRef = (n: number | null): string =>
+  n === null ? "" : ` (vụ #${n})`;
+
 /**
  * Vietnamese catalog (second locale). Typed against `Messages` from the English source-of-truth catalog (en.ts),
  * so keys and function signatures must match exactly. Consumers get it through getMessages() / ctx.t only.
@@ -87,6 +91,82 @@ export const vi: Messages = {
     similar: {
       description: "Xem và thêm các bài tương tự với bài đang phát",
     },
+    ban: {
+      description: "Cấm một người dùng khỏi máy chủ này",
+      user: "Người dùng cần cấm (dùng được cả với người không ở trong máy chủ)",
+      reason: "Lý do (hiện trong nhật ký kiểm tra và nhật ký kiểm duyệt)",
+      deleteMessages: "Xóa các tin nhắn gần đây của người dùng",
+      deleteChoices: {
+        none: "Không xóa",
+        "1h": "1 giờ qua",
+        "6h": "6 giờ qua",
+        "12h": "12 giờ qua",
+        "24h": "24 giờ qua",
+        "3d": "3 ngày qua",
+        "7d": "7 ngày qua",
+      },
+    },
+    unban: {
+      description: "Gỡ lệnh cấm của một người dùng",
+      user: "ID hoặc lượt nhắc (mention) của người dùng bị cấm",
+      reason: "Lý do (hiện trong nhật ký kiểm tra và nhật ký kiểm duyệt)",
+    },
+    kick: {
+      description: "Đuổi một thành viên khỏi máy chủ này",
+      user: "Thành viên cần đuổi",
+      reason: "Lý do (hiện trong nhật ký kiểm tra và nhật ký kiểm duyệt)",
+    },
+    timeout: {
+      description: "Hạn chế một thành viên hoặc gỡ hạn chế",
+      set: {
+        description: "Hạn chế (timeout) một thành viên",
+        user: "Thành viên cần hạn chế",
+        duration: "Thời lượng, ví dụ 10m, 1h30m hoặc 7d (tối đa 28d)",
+        reason: "Lý do (hiện trong nhật ký kiểm tra và nhật ký kiểm duyệt)",
+      },
+      remove: {
+        description: "Gỡ hạn chế của một thành viên",
+        user: "Thành viên cần gỡ hạn chế",
+        reason: "Lý do (hiện trong nhật ký kiểm tra và nhật ký kiểm duyệt)",
+      },
+    },
+    warn: {
+      description: "Cảnh cáo một thành viên",
+      user: "Thành viên cần cảnh cáo",
+      reason: "Lý do cảnh cáo",
+    },
+    warnings: {
+      description: "Xem hoặc xóa các cảnh cáo của một người dùng",
+      list: {
+        description: "Xem các cảnh cáo của một người dùng",
+        user: "Người dùng cần xem cảnh cáo",
+      },
+      clear: {
+        description: "Xóa mọi cảnh cáo của một người dùng (cần quyền Quản lý máy chủ)",
+        user: "Người dùng cần xóa cảnh cáo",
+      },
+    },
+    case: {
+      description: "Xem hoặc sửa các vụ kiểm duyệt",
+      view: {
+        description: "Xem một vụ",
+        number: "Số vụ",
+      },
+      reason: {
+        description: "Đổi lý do của một vụ",
+        number: "Số vụ",
+        reason: "Lý do mới",
+      },
+      delete: {
+        description: "Xóa một vụ (cần quyền Quản lý máy chủ)",
+        number: "Số vụ",
+      },
+    },
+    purge: {
+      description: "Xóa các tin nhắn gần đây trong kênh này",
+      amount: "Số tin nhắn cần xóa (1-100)",
+      user: "Chỉ xóa tin nhắn của người dùng này",
+    },
     settings: {
       description: "Cài đặt bot cho máy chủ này",
       view: { description: "Xem cài đặt hiện tại" },
@@ -103,10 +183,19 @@ export const vi: Messages = {
         locale: "Ngôn ngữ muốn dùng",
         default: "Mặc định của bot",
       },
+      modLog: {
+        description: "Đặt hoặc xóa kênh nhật ký kiểm duyệt",
+        channel: "Kênh nhật ký kiểm duyệt (bỏ trống để tắt)",
+      },
+      modDm: {
+        description: "Bật hoặc tắt tin nhắn riêng gửi cho người bị xử lý",
+        enabled: "Nhắn riêng cho người dùng khi bị cấm, đuổi, hạn chế hoặc cảnh cáo",
+      },
     },
   },
   categories: {
     music: "🎵 Âm nhạc",
+    moderation: "🛡️ Kiểm duyệt",
     general: "🧰 Chung",
     settings: "⚙️ Cài đặt",
   },
@@ -159,6 +248,12 @@ export const vi: Messages = {
     Speak: "Nói",
     SendMessages: "Gửi tin nhắn",
     EmbedLinks: "Nhúng liên kết",
+    BanMembers: "Cấm thành viên",
+    KickMembers: "Đuổi thành viên",
+    ModerateMembers: "Hạn chế thành viên",
+    ManageMessages: "Quản lý tin nhắn",
+    ReadMessageHistory: "Đọc lịch sử tin nhắn",
+    ManageGuild: "Quản lý máy chủ",
   },
   ping: {
     title: "🏓 Pong!",
@@ -301,6 +396,105 @@ export const vi: Messages = {
     languageReset: (name: string) =>
       `✅ Đã dùng lại ngôn ngữ mặc định của bot (**${name}**).`,
     noPermission: "Bạn cần quyền Quản lý máy chủ để dùng lệnh này.",
+    modLog: "Nhật ký kiểm duyệt",
+    modLogSet: (channelId: string) =>
+      `✅ Đã đặt kênh nhật ký kiểm duyệt là <#${channelId}>.`,
+    modLogCleared: "✅ Đã tắt nhật ký kiểm duyệt.",
+    modLogNoAccess:
+      "Bot không thể gửi tin nhắn trong kênh đó. Bot cần quyền Xem kênh, Gửi tin nhắn và Nhúng liên kết ở đó.",
+    modDm: "Nhắn riêng khi xử lý",
+    modDmSet: (enabled: boolean) =>
+      `✅ Nhắn riêng khi xử lý: **${enabled ? "Bật" : "Tắt"}**.`,
+  },
+  moderation: {
+    self: "Bạn không thể dùng lệnh này với chính mình.",
+    bot: "Bot không thể tự xử lý chính nó.",
+    owner: "Không thể xử lý chủ máy chủ.",
+    notMember: "Người dùng này không phải thành viên của máy chủ.",
+    invokerNotHigher:
+      "Bạn chỉ có thể xử lý thành viên có vai trò cao nhất thấp hơn bạn.",
+    botNotHigher:
+      "Vai trò cao nhất của bot phải cao hơn vai trò cao nhất của thành viên đó. Hãy kéo vai trò của bot lên trong Cài đặt máy chủ > Vai trò.",
+    targetAdmin: "Không thể hạn chế thành viên có quyền Quản trị viên.",
+    invokerMissing: (permission: string) =>
+      `Bạn cần quyền **${permission}** để dùng lệnh này.`,
+    botMissing: (permissions: string[]) =>
+      `Bot thiếu quyền: ${permissions.join(", ")}.`,
+    invalidUser:
+      "Hãy nhập ID hoặc lượt nhắc của người dùng, ví dụ `123456789012345678` hoặc `<@123456789012345678>`.",
+    unknownUser: "Không có người dùng Discord nào có ID này.",
+    notTimedOut: "Thành viên này không bị hạn chế.",
+    invalidDuration:
+      "Thời lượng không hợp lệ. Dùng số kèm s, m, h, d hoặc w, ví dụ `10m`, `1h30m` hoặc `7d`.",
+    durationTooLong: "Thời gian hạn chế tối đa là 28 ngày.",
+    alreadyBanned: "Người dùng này đã bị cấm rồi.",
+    notBanned: "Người dùng này không bị cấm.",
+    caseNotFound: "Không tìm thấy vụ này.",
+    purgeNoAccess: "Bot không thể đọc hoặc xóa tin nhắn trong kênh này.",
+    storageUnavailable:
+      "Hồ sơ kiểm duyệt tạm thời không khả dụng. Vui lòng thử lại sau.",
+    banned: (user: string, n: number | null) =>
+      `🔨 Đã cấm **${user}**${caseRef(n)}.`,
+    unbanned: (user: string, n: number | null) =>
+      `🔓 Đã gỡ lệnh cấm **${user}**${caseRef(n)}.`,
+    kicked: (user: string, n: number | null) =>
+      `👢 Đã đuổi **${user}**${caseRef(n)}.`,
+    timedOut: (user: string, duration: string, n: number | null) =>
+      `⏳ Đã hạn chế **${user}** trong ${duration}${caseRef(n)}.`,
+    timeoutRemoved: (user: string, n: number | null) =>
+      `✅ Đã gỡ hạn chế cho **${user}**${caseRef(n)}.`,
+    warned: (user: string, n: number | null) =>
+      `⚠️ Đã cảnh cáo **${user}**${caseRef(n)}.`,
+    purged: (n: number) => `🧹 Đã xóa ${n} tin nhắn.`,
+    purgeSkipped: (m: number) =>
+      `${m} tin nhắn không bị xóa: bot chỉ xét 100 tin nhắn gần nhất và bỏ qua tin nhắn đã ghim, tin nhắn cũ hơn 14 ngày và (khi lọc theo người dùng) tin nhắn của người khác.`,
+    caseReasonUpdated: (n: number) => `✏️ Đã cập nhật lý do của vụ #${n}.`,
+    caseDeleted: (n: number) =>
+      `🗑 Đã xóa vụ #${n}. Tin nhắn trong nhật ký kiểm duyệt vẫn được giữ.`,
+    warningsCleared: (user: string, count: number) =>
+      `🧹 Đã xóa ${count} cảnh cáo của **${user}**.`,
+    dmFailed: "Không gửi được tin nhắn riêng cho người dùng.",
+    caseNotRecorded: "Đã thực hiện, nhưng hiện chưa lưu được hồ sơ vụ việc.",
+    dmAlreadySent: "Người dùng đã được thông báo qua tin nhắn riêng.",
+    dmBan: (guild: string) => `Bạn đang bị cấm khỏi **${guild}**.`,
+    dmKick: (guild: string) => `Bạn đang bị đuổi khỏi **${guild}**.`,
+    dmTimeout: (guild: string, duration: string) =>
+      `Bạn đã bị hạn chế ${duration} trong máy chủ **${guild}**.`,
+    dmWarn: (guild: string) =>
+      `Bạn đã nhận một cảnh cáo trong máy chủ **${guild}**.`,
+    dmReason: (reason: string) => `Lý do: ${reason}`,
+    log: {
+      caseTitle: (action: string, n: number | null) =>
+        n === null ? `${action} | Chưa lưu hồ sơ` : `${action} | Vụ #${n}`,
+      notRecorded: "Không lưu được hồ sơ nên vụ này không có số.",
+      target: "Người dùng",
+      moderator: "Người kiểm duyệt",
+      reason: "Lý do",
+      noReason: "Không có lý do",
+      duration: "Thời lượng",
+      dm: "Tin nhắn riêng",
+      dmSent: "Đã gửi",
+      dmNotSent: "Không gửi",
+      dmOff: "Tắt",
+      purgeTitle: "Đã dọn tin nhắn",
+      channel: "Kênh",
+      count: "Đã xóa",
+      userFilter: "Chỉ của",
+    },
+    actions: {
+      ban: "Cấm",
+      unban: "Gỡ cấm",
+      kick: "Đuổi",
+      timeout: "Hạn chế",
+      untimeout: "Gỡ hạn chế",
+      warn: "Cảnh cáo",
+    },
+    warnings: {
+      title: (user: string) => `Cảnh cáo của ${user}`,
+      empty: "Người dùng này không có cảnh cáo nào.",
+      footer: (page: number, totalPages: number, total: number) =>
+        `Trang ${page}/${totalPages} • ${total} cảnh cáo`,
+    },
   },
   filters: {
     names: {
