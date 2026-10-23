@@ -117,6 +117,7 @@ npm run build && npm start
 - Works on many servers at once: queues, settings and timers are all separate per server.
 - DJ role and per-server settings via `/settings`; settings are stored in PostgreSQL so they survive restarts.
 - Moderation (v1.4): `/ban`, `/unban`, `/kick`, `/timeout`, `/warn`, `/warnings`, `/case` and `/purge`, numbered cases per server, a mod-log channel and an optional DM to the user (see [Moderation](#moderation)).
+- Leveling (v1.4): members earn XP for their messages (off until a server manager turns it on), levels on a fixed curve, `/rank`, a paged `/leaderboard`, `/xp` for admins, level-up messages and role rewards (see [Leveling](#leveling)).
 - Music discovery: `/autoplay` (adds suggested tracks when the queue runs out), `/radio` (plays continuously from a track or a query), `/similar` (browse and pick similar tracks).
 - Playlist and YouTube Mix links are added to the queue in full, starting from the selected video.
 - Restores the playback session after the bot restarts: the bot rejoins the voice channel and continues the queue.
@@ -135,7 +136,7 @@ npm run build && npm start
 1. Go to the [Discord Developer Portal](https://discord.com/developers/applications) and choose **New Application**.
 2. **General Information** tab: copy the **Application ID**. This is the `DISCORD_CLIENT_ID` value.
 3. **Bot** tab: choose **Reset Token** to get the token; this is `DISCORD_TOKEN`. The token is shown only once; do not share it and do not put it in git.
-4. The bot only uses the `Guilds` and `GuildVoiceStates` intents; the v1.4 moderation commands need no other intent. **Do not enable** any Privileged Gateway Intent (Presence, Server Members, Message Content).
+4. The bot uses the `Guilds`, `GuildVoiceStates` and (since v1.4, for XP from messages) `GuildMessages` intents. None of them is privileged and nothing has to be switched on in the portal: the bot never reads message content. **Do not enable** any Privileged Gateway Intent (Presence, Server Members, Message Content).
 5. To invite the bot to many servers, enable **Public Bot** in the **Bot** tab (it is on by default for new applications; if it is off, only the application owner can invite the bot).
 
 ## Invite link
@@ -143,18 +144,18 @@ npm run build && npm start
 Replace `<DISCORD_CLIENT_ID>` with your Application ID:
 
 ```
-https://discord.com/oauth2/authorize?client_id=<DISCORD_CLIENT_ID>&scope=bot%20applications.commands&permissions=1101662350342
+https://discord.com/oauth2/authorize?client_id=<DISCORD_CLIENT_ID>&scope=bot%20applications.commands&permissions=1101930785798
 ```
 
 - Scope: `bot applications.commands`.
-- Permissions (permissions = `1101662350342`): View Channels, Send Messages, Embed Links, Connect, Speak, Use Slash Commands, and for moderation (v1.4):
+- Permissions (permissions = `1101930785798`): View Channels, Send Messages, Embed Links, Connect, Speak, Use Slash Commands, Manage Roles for leveling (v1.4: the bot gives and removes the role rewards), and for moderation (v1.4):
   - Kick Members: `/kick`.
   - Ban Members: `/ban` and `/unban`.
   - Timeout Members (`ModerateMembers`): `/timeout`.
   - Manage Messages: `/purge` deletes other users' messages.
   - Read Message History: `/purge` reads the recent messages of the channel.
-- The value `1101662350342` was computed with discord.js `PermissionsBitField`: the v1.3 permissions (1024 + 2048 + 16384 + 1048576 + 2097152 + 2147483648 = `2150648832`) plus 2 + 4 + 1099511627776 + 8192 + 65536.
-- Servers that added the bot before v1.4: the bot's role does not get the new permissions by itself. Open the new link again (whether re-authorizing updates the bot's role has not been verified) or grant the permissions to the bot's role by hand. The bot's role must also sit above the members it should moderate (Server Settings > Roles).
+- The value `1101930785798` was computed with discord.js `PermissionsBitField`: the v1.3 permissions (1024 + 2048 + 16384 + 1048576 + 2097152 + 2147483648 = `2150648832`) plus 2 + 4 + 1099511627776 + 8192 + 65536 for moderation and 268435456 (Manage Roles) for leveling.
+- Servers that added the bot before v1.4: the bot's role does not get the new permissions by itself. Open the new link again (whether re-authorizing updates the bot's role has not been verified) or grant the permissions to the bot's role by hand. The bot's role must also sit above the members it should moderate and above every level reward role (Server Settings > Roles).
 
 ## Configuring `.env`
 
@@ -424,7 +425,10 @@ The table below comes from the `npm run check-commands` output. All commands onl
 | `/warnings`   | Moderation | 2 subcommands (`list`, `clear`)                             | 3s       | Show or delete the warnings of a user                            |
 | `/case`       | Moderation | 3 subcommands (`view`, `reason`, `delete`)                  | 2s       | Show or edit moderation cases                                    |
 | `/purge`      | Moderation | 2 (`amount`, `user`)                                        | 5s       | Delete recent messages in this channel                           |
-| `/settings`   | Settings | 6 subcommands (`view`, `dj-role`, `default-volume`, `language`, `mod-log`, `mod-dm`) | 3s | Bot settings for this server                         |
+| `/rank`       | Leveling | 1 (`user`)                                                    | 5s       | Show the level, XP and rank of a member                          |
+| `/leaderboard` | Leveling | 1 (`page`)                                                   | 5s       | Show the XP leaderboard of this server                           |
+| `/xp`         | Leveling | 4 subcommands (`add`, `remove`, `set`, `reset`)               | 2s       | Change the XP of a member (needs Manage Server)                  |
+| `/settings`   | Settings | 7 subcommands (`view`, `dj-role`, `default-volume`, `language`, `mod-log`, `mod-dm`, `leveling`) | 3s | Bot settings for this server             |
 
 Notes:
 
@@ -432,7 +436,7 @@ Notes:
 - `/play` accepts a link or a query; `source` picks `youtube`, `youtubemusic` or `soundcloud` for queries; `next` inserts the track at the front of the queue. A query only plays the best result; playlists and Mixes are added in full (at most 300 tracks per request, duplicates skipped), with a queue limit of 1000 tracks.
 - `/autoplay` takes `state` (`on`/`off`) and `mode` (`related`/`seed`); `/radio` takes a link or a query. `/autoplay` needs DJ permission when a DJ role is set, `/radio` and `/similar` do not. `/autoplay` only changes a setting, so it works when you are not in a voice channel (no player or channel permission needed); adding tracks automatically still requires someone in the voice channel.
 - `/seek` accepts `mm:ss`, `h:mm:ss` or a number of seconds. `/volume` accepts 0-150.
-- The moderation commands and their permissions are described in [Moderation](#moderation).
+- The moderation commands and their permissions are described in [Moderation](#moderation), the leveling commands in [Leveling](#leveling).
 
 ## DJ role and `/settings`
 
@@ -442,13 +446,14 @@ Notes:
 - `/settings language locale` (v1.3): the bot language in this server: `English`, `Tiếng Việt` or `Bot default` (clears the choice and falls back to `DEFAULT_LOCALE`). The confirmation reply uses the new language and the "Now playing" message is re-rendered.
 - `/settings mod-log [channel]` (v1.4): the channel that receives the moderation log (a text or announcement channel); leave `channel` empty to turn the mod log off. The bot refuses a channel where it cannot post embeds (View Channel, Send Messages, Embed Links).
 - `/settings mod-dm enabled` (v1.4): whether the user gets a DM on a ban, kick, timeout or warning (on by default).
-- `/settings view` also shows the autoplay state and mode (set with `/autoplay`), the language row (the chosen language's name, or `Default (<name of the DEFAULT_LOCALE language>)`), the mod-log channel and the DM setting.
+- `/settings leveling [enabled] [announce] [channel]` (v1.4): turn leveling on or off and choose where level-up messages go (see [Leveling](#leveling)); without options it shows the current leveling settings.
+- `/settings view` also shows the autoplay state and mode (set with `/autoplay`), the language row (the chosen language's name, or `Default (<name of the DEFAULT_LOCALE language>)`), the mod-log channel, the DM setting, whether leveling is on and where level-up messages go.
 - Only members with the **Manage Server** permission can use `/settings`.
 - While no DJ role is set, everyone in the voice channel can use the control commands.
 - Once a DJ role is set, the control commands (pause, stop, volume, loop, ...) are reserved for members with the DJ role or the Manage Server permission. Exceptions: someone listening alone with the bot; the member who added a track may `/skip`, `/previous`, `/remove`, `/seek`, `/forward`, `/rewind` on their own track.
 - If the DJ role is deleted from the server, the bot treats it as not set and clears the setting, so users are not locked out of the control commands.
 - Settings are stored in PostgreSQL with `STORAGE_DRIVER=persistent`; with `memory` they are lost when the bot restarts.
-- Deleting the mod-log channel clears `/settings mod-log`, and deleting the DJ role clears the DJ role setting. Each deletion is applied with one database update, so deleting a whole category at once cannot bring a removed id back.
+- Deleting the mod-log or level-up channel clears that setting and removes the channel from the XP-ignored channels; deleting a role clears the DJ role setting, removes the role from the XP-ignored roles and deletes its level reward. Each deletion is applied with one database update, so deleting a whole category at once cannot bring a removed id back.
 
 ## Moderation
 
@@ -477,6 +482,26 @@ v1.4 adds moderation commands. All their replies are only visible to the moderat
 - PostgreSQL unavailable: `/ban`, `/unban`, `/kick` and `/timeout` still run and the reply says the case was not recorded; `/warn`, `/warnings` and `/case` answer that the records are temporarily unavailable. With `STORAGE_DRIVER=memory`, cases are only kept until the bot restarts.
 - The bot does not filter message content. Managing Discord's own AutoMod rules is planned for the web dashboard.
 
+## Leveling
+
+v1.4 adds XP and levels. Leveling is off in every server until a manager turns it on with `/settings leveling enabled:true`.
+
+- XP: an eligible message earns a random 15-25 XP times the server's XP multiplier (10-500 %, default 100 %), at most once per 60 seconds per member and server. The cooldown is shared through Redis (kept in the bot process while Redis is down). Bots, webhooks, system messages and direct messages earn nothing, and neither do messages in an ignored channel (an ignored channel also covers its threads, an ignored category its channels) or from a member with an ignored role. XP is capped at 2,000,000,000 (about level 1058).
+- Levels: going from level `l` to `l + 1` takes `5 × l² + 50 × l + 100` XP. Total XP needed per level:
+
+| Level    | 1   | 2   | 3   | 5     | 10    | 20     | 30     | 50      | 100       |
+| -------- | --- | --- | --- | ----- | ----- | ------ | ------ | ------- | --------- |
+| Total XP | 100 | 255 | 475 | 1,150 | 4,675 | 23,850 | 67,525 | 268,375 | 1,899,250 |
+
+- `/rank [user]` (public reply): level, XP within the level, total XP, rank and a progress bar. The rank is the member's position on the leaderboard (members with equal XP are ordered by user ID).
+- `/leaderboard [page]` (public reply): 10 members per page with previous/next buttons; a page past the end shows the last page.
+- `/xp add|remove user amount` (1-1,000,000), `/xp set user xp` (0-2,000,000,000) and `/xp reset user` (Manage Server; the reply is only visible to you) change a member's XP. The level follows the XP, also downwards, and the role rewards are updated. These changes are never announced.
+- Level-up messages: `/settings leveling announce` sends them to `Channel of the message` (default), `Configured channel` (set with the `channel` option, which alone also selects this mode; when the bot cannot post there it uses the message's channel), `Direct message` or nowhere (`Off`). The bot refuses a `channel` where it cannot post embeds (View Channel, Send Messages, Embed Links). The message mentions the member without pinging them and uses the server's language; a jump over several levels is announced once.
+- Role rewards: up to 25 rewards, one role per level (levels 1-1000). In `stack` mode (the default) members keep every reward up to their level; in `highest` mode only the reward of the highest level reached. The rewards are applied on a level-up and after `/xp`. The bot needs Manage Roles and its own role must sit above every reward role; managed roles and roles that are not below the bot's role are skipped and logged once.
+- Settings without a slash command: the XP multiplier, the ignored channels and roles, the role rewards and their mode, and the public leaderboard page are set in the web dashboard. Without it they keep their defaults (100 %, nothing ignored, no rewards, no public leaderboard).
+- Deleting a channel or a role removes it from the leveling settings, and deleting a reward role deletes its reward. When the bot is removed from a server, the role rewards are deleted with the settings; member XP (and the moderation cases) are kept.
+- PostgreSQL unavailable: messages earn no XP meanwhile (nothing is queued), and `/rank`, `/leaderboard` and `/xp` answer that levels are temporarily unavailable. With `STORAGE_DRIVER=memory`, XP is only kept until the bot restarts.
+
 ## Language
 
 - The bot supports `en` (English, the default) and `vi` (Vietnamese).
@@ -501,7 +526,7 @@ v1.4 adds moderation commands. All their replies are only visible to the moderat
 - **Limits of the SSRF filter**: the filter only checks the host name written in the link. It does not resolve DNS (a domain that points to an internal address still gets through) and does not follow redirects. If you run the bot publicly, add network-level limits for the Lavalink container (block egress to internal, link-local and cloud metadata IP ranges).
 - PostgreSQL and Redis both require a password (and are not published in the production stack). Connection strings, passwords and `LASTFM_API_KEY` are redacted from logs and errors. `PLAY_HISTORY=true` stores the requester ID of each track; only enable it when needed and tell your users.
 - The bot opens no HTTP port; it only makes outbound connections to Discord and Lavalink. The container health check uses a heartbeat file, not a network port.
-- Minimal intents: `Guilds` and `GuildVoiceStates`.
+- Minimal intents: `Guilds`, `GuildVoiceStates` and `GuildMessages` (none privileged; message content is not read).
 
 ## Known limitations
 
@@ -514,6 +539,7 @@ v1.4 adds moderation commands. All their replies are only visible to the moderat
 - **24/7 mode**: exists in the code but has no command to enable it yet; off by default.
 - **One Lavalink node**: only one node is used, with no load balancing across nodes.
 - **Moderation**: only actions taken through the bot's commands are recorded; bans, kicks and timeouts done in Discord's own menus create no case and no mod-log entry. `/purge` only looks at the last 100 messages and cannot delete messages older than 14 days. There are no temporary bans and no automatic punishment after a number of warnings.
+- **Leveling**: no XP is granted while PostgreSQL is unavailable (nothing is queued); the `memory` storage driver keeps XP only until the bot restarts. There is no voice XP, no rank image card, no XP decay and no server-wide reset. The XP multiplier, the ignored lists and the role rewards can only be changed in the web dashboard.
 - Bandcamp and Twitch only accept links (no search). Stage channels are not supported yet.
 - `bcsearch:` is not a Lavalink feature, so there is no Bandcamp search.
 
@@ -578,9 +604,19 @@ Not verified in v1.4 (moderation):
 - `/warnings list` page buttons on a real message.
 - Registering the 35 commands with Discord, and upgrading a real running stack to v1.4 (migration `0002` on real data).
 
+Not verified in v1.4 (leveling):
+
+- XP from real messages in a real server (the `GuildMessages` events and the member data that comes with them).
+- Level-up messages in real channels and DMs, how the `/rank` and `/leaderboard` embeds render in a real client, and the `/leaderboard` page buttons on a real message.
+- Role rewards with a real role hierarchy (Manage Roles, role order, managed roles).
+- `/settings leveling channel` refusing a real channel where the bot cannot post.
+- Registering the 38 commands with Discord, and upgrading a real running stack (migration `0003` on real data).
+
 Verified in v1.4 (moderation; no real Discord token, throwaway PostgreSQL 18.6 / Redis 8.8.3 containers): `npm run typecheck`, `lint`, `build`, `check-commands` (35 commands) and `npm test` pass; the 26 existing commands other than `/settings` serialize exactly as before and `/settings` only gains `mod-log` and `mod-dm`; every new command has its default member permission, Vietnamese localizations and option limits; migration `0002_moderation` applies and re-runs cleanly (3 rows in `drizzle.__drizzle_migrations`) and its check constraints reject unknown actions; 20 parallel case creations in one server get the numbers 1 to 20 and a deleted number is not reused; with PostgreSQL stopped, creating a case resolves at once without an error and the settings store queues channel and role removals and replays them as the same database update after recovery; a database with only `0000` and `0001` makes the bot log `Database schema is missing or outdated`; the moderation pipeline (order of checks, DM before a ban or kick and after a timeout or warning, error mapping, notes) with stub Discord objects; an offline start with a fake token (migrations applied, Redis and PostgreSQL connected, exactly one `Login failed` line, no secrets in the log).
 
-Suggested quick test on a real server: `/play never gonna give you up`, `/pause`, `/resume`, `/skip`, `/queue` and the buttons on the "Now playing" message; then `/settings language` with each choice; then `/settings mod-log`, `/warn` and `/case view` on a test member.
+Verified in v1.4 (leveling; no real Discord token, throwaway PostgreSQL 18.6 / Redis 8.8.3 containers): `npm run typecheck`, `lint`, `build`, `check-commands` (38 commands) and `npm test` pass; the 26 existing commands other than `/settings` serialize exactly as before and `/settings` only gains `mod-log`, `mod-dm` and `leveling`; `/leaderboard page` is limited to 1-10,000 and the `/xp` options to 1-1,000,000 and 0-2,000,000,000; migration `0003_leveling` applies on an empty database and on one that only has `0000`-`0002` (4 rows in `drizzle.__drizzle_migrations`), and its constraints reject a negative XP and a reward role used twice; the XP formulas match the level table (the closed form equals a running sum up to level 1100); 50 parallel grants for one member add up exactly and report each level-up once; grants racing `/xp set 0`, and `/xp add` on a member without a row racing 20 grants, never leave the level above the XP, never fail and never mark PostgreSQL unavailable; on 50,000 seeded members the leaderboard page reads `member_levels_guild_xp_idx` without a sort and every rank equals the leaderboard position, ties included; parallel deletions of ignored channels and roles (also during a PostgreSQL outage, and against a value another process wrote) leave no deleted id behind; v1.3 and earlier v1.4 Redis settings entries decode with the leveling defaults; a `BotClient` built with a fake configuration requests exactly `Guilds`, `GuildVoiceStates` and `GuildMessages`; the message handler, `/rank`, `/leaderboard`, `/xp` and `/settings leveling` behave as described above with stub Discord objects; an offline start of the built bot applies the 4 migrations and stops at exactly one `Login failed` line.
+
+Suggested quick test on a real server: `/play never gonna give you up`, `/pause`, `/resume`, `/skip`, `/queue` and the buttons on the "Now playing" message; then `/settings language` with each choice; then `/settings mod-log`, `/warn` and `/case view` on a test member; then `/settings leveling enabled:true`, a few messages a minute apart, `/rank` and `/leaderboard`.
 
 ## Legal notice
 
@@ -615,9 +651,10 @@ src/
   index.ts            Entry point, login and safe shutdown
   config/             Reading and validating environment variables, constants
   client/             BotClient and event registration
-  commands/           Commands by group: general/, music/, moderation/, settings/ and index.ts (explicit list)
-  events/             Discord events (ready, guildDelete, guildRoleDelete, channelDelete, interaction, voice state)
+  commands/           Commands by group: general/, music/, moderation/, leveling/, settings/ and index.ts (explicit list)
+  events/             Discord events (ready, guildDelete, guildRoleDelete, channelDelete, messageCreate, interaction, voice state)
   moderation/         Moderation: target checks, durations, limits, the action pipeline, mod log, permission helpers
+  leveling/           Leveling: XP formulas, eligibility rules, role reward diff, the message handler (leveling-service.ts)
   interactions/       Command, button and autocomplete handling, cooldowns
   music/              Lavalink, queue, guards, controls, search, lyrics
     discovery/        Suggestion engine, autoplay, filters and providers (providers/)
@@ -646,6 +683,7 @@ drizzle/              Generated SQL migrations (kept in git, do not edit by hand
   0000_init.sql       Initial schema
   0001_guild_language.sql  v1.3: guild_settings.language column + check constraint
   0002_moderation.sql      v1.4: mod_cases, mod_case_counters, guild_settings.mod_log_channel_id and mod_dm_target
+  0003_leveling.sql        v1.4: member_levels, level_role_rewards and the leveling columns of guild_settings
 drizzle.config.ts     drizzle-kit configuration
 lavalink/             application.yml (the plugins/ directory only holds .gitkeep; plugins live in a Docker volume)
 ```

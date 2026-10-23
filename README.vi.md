@@ -117,6 +117,7 @@ npm run build && npm start
 - Hoạt động trên nhiều máy chủ cùng lúc: hàng đợi, cài đặt và bộ hẹn giờ đều tách riêng theo từng máy chủ.
 - Vai trò DJ và cài đặt theo máy chủ qua `/settings`; cài đặt được lưu trong PostgreSQL nên không mất khi khởi động lại.
 - Kiểm duyệt (v1.4): `/ban`, `/unban`, `/kick`, `/timeout`, `/warn`, `/warnings`, `/case` và `/purge`, hồ sơ vụ việc đánh số theo máy chủ, kênh nhật ký kiểm duyệt và tin nhắn riêng (tùy chọn) gửi cho người bị xử lý (xem [Kiểm duyệt](#kiểm-duyệt)).
+- Cấp độ (v1.4): thành viên nhận XP khi nhắn tin (tắt cho tới khi người quản lý máy chủ bật), cấp độ theo một đường cong cố định, `/rank`, `/leaderboard` có phân trang, `/xp` cho quản trị viên, thông báo lên cấp và vai trò thưởng (xem [Cấp độ](#cấp-độ)).
 - Tự khám phá nhạc: `/autoplay` (tự thêm bài gợi ý khi hết hàng đợi), `/radio` (phát liên tục từ một bài hoặc từ khóa), `/similar` (xem và chọn bài tương tự).
 - Liên kết playlist hoặc YouTube Mix được thêm toàn bộ vào hàng đợi, bắt đầu từ video đã chọn.
 - Khôi phục phiên phát sau khi bot khởi động lại: bot vào lại kênh thoại và phát tiếp hàng đợi.
@@ -135,7 +136,7 @@ npm run build && npm start
 1. Vào [Discord Developer Portal](https://discord.com/developers/applications), chọn **New Application**.
 2. Tab **General Information**: sao chép **Application ID**. Đây là giá trị `DISCORD_CLIENT_ID`.
 3. Tab **Bot**: chọn **Reset Token** để lấy token, đây là `DISCORD_TOKEN`. Token chỉ hiện một lần, không chia sẻ và không đưa vào git.
-4. Bot chỉ dùng intents `Guilds` và `GuildVoiceStates`; các lệnh kiểm duyệt của v1.4 không cần thêm intent nào. **Không bật** bất kỳ Privileged Gateway Intent nào (Presence, Server Members, Message Content).
+4. Bot dùng intents `Guilds`, `GuildVoiceStates` và (từ v1.4, để tính XP từ tin nhắn) `GuildMessages`. Không intent nào trong số đó là privileged và không cần bật gì trong portal: bot không bao giờ đọc nội dung tin nhắn. **Không bật** bất kỳ Privileged Gateway Intent nào (Presence, Server Members, Message Content).
 5. Để mời bot vào nhiều máy chủ, bật **Public Bot** trong tab **Bot** (mục này đã được bật mặc định với ứng dụng mới; nếu tắt, chỉ chủ ứng dụng mới mời được bot).
 
 ## Liên kết mời bot
@@ -143,18 +144,18 @@ npm run build && npm start
 Thay `<DISCORD_CLIENT_ID>` bằng Application ID của bạn:
 
 ```
-https://discord.com/oauth2/authorize?client_id=<DISCORD_CLIENT_ID>&scope=bot%20applications.commands&permissions=1101662350342
+https://discord.com/oauth2/authorize?client_id=<DISCORD_CLIENT_ID>&scope=bot%20applications.commands&permissions=1101930785798
 ```
 
 - Scope: `bot applications.commands`.
-- Quyền (permissions = `1101662350342`): View Channels, Send Messages, Embed Links, Connect, Speak, Use Slash Commands, và cho kiểm duyệt (v1.4):
+- Quyền (permissions = `1101930785798`): View Channels, Send Messages, Embed Links, Connect, Speak, Use Slash Commands, Manage Roles cho hệ thống cấp độ (v1.4: bot cấp và gỡ vai trò thưởng), và cho kiểm duyệt (v1.4):
   - Kick Members: `/kick`.
   - Ban Members: `/ban` và `/unban`.
   - Timeout Members (`ModerateMembers`): `/timeout`.
   - Manage Messages: `/purge` xóa tin nhắn của người khác.
   - Read Message History: `/purge` đọc các tin nhắn gần đây của kênh.
-- Giá trị `1101662350342` được tính bằng `PermissionsBitField` của discord.js: các quyền của v1.3 (1024 + 2048 + 16384 + 1048576 + 2097152 + 2147483648 = `2150648832`) cộng thêm 2 + 4 + 1099511627776 + 8192 + 65536.
-- Máy chủ đã thêm bot trước v1.4: vai trò của bot không tự nhận quyền mới. Mở lại liên kết mới (chưa kiểm chứng việc cấp quyền lại có cập nhật vai trò của bot hay không) hoặc tự cấp các quyền đó cho vai trò của bot. Vai trò của bot cũng phải nằm trên các thành viên mà bot cần xử lý (Cài đặt máy chủ > Vai trò).
+- Giá trị `1101930785798` được tính bằng `PermissionsBitField` của discord.js: các quyền của v1.3 (1024 + 2048 + 16384 + 1048576 + 2097152 + 2147483648 = `2150648832`) cộng thêm 2 + 4 + 1099511627776 + 8192 + 65536 cho kiểm duyệt và 268435456 (Manage Roles) cho hệ thống cấp độ.
+- Máy chủ đã thêm bot trước v1.4: vai trò của bot không tự nhận quyền mới. Mở lại liên kết mới (chưa kiểm chứng việc cấp quyền lại có cập nhật vai trò của bot hay không) hoặc tự cấp các quyền đó cho vai trò của bot. Vai trò của bot cũng phải nằm trên các thành viên mà bot cần xử lý và trên mọi vai trò thưởng cấp độ (Cài đặt máy chủ > Vai trò).
 
 ## Cấu hình `.env`
 
@@ -423,7 +424,10 @@ Bảng dưới đây lấy từ kết quả `npm run check-commands`. Tất cả
 | `/warnings`   | Kiểm duyệt | 2 lệnh con (`list`, `clear`)                  | 3s       | Xem hoặc xóa các cảnh cáo của một người dùng              |
 | `/case`       | Kiểm duyệt | 3 lệnh con (`view`, `reason`, `delete`)       | 2s       | Xem hoặc sửa các vụ kiểm duyệt                            |
 | `/purge`      | Kiểm duyệt | 2 (`amount`, `user`)                          | 5s       | Xóa các tin nhắn gần đây trong kênh này                   |
-| `/settings`   | Cài đặt | 6 lệnh con (`view`, `dj-role`, `default-volume`, `language`, `mod-log`, `mod-dm`) | 3s | Cài đặt bot cho máy chủ này                 |
+| `/rank`       | Cấp độ  | 1 (`user`)                                       | 5s       | Xem cấp độ, XP và thứ hạng của một thành viên             |
+| `/leaderboard` | Cấp độ | 1 (`page`)                                      | 5s       | Xem bảng xếp hạng XP của máy chủ này                      |
+| `/xp`         | Cấp độ  | 4 lệnh con (`add`, `remove`, `set`, `reset`)     | 2s       | Thay đổi XP của một thành viên (cần quyền Quản lý máy chủ) |
+| `/settings`   | Cài đặt | 7 lệnh con (`view`, `dj-role`, `default-volume`, `language`, `mod-log`, `mod-dm`, `leveling`) | 3s | Cài đặt bot cho máy chủ này    |
 
 Ghi chú:
 
@@ -431,7 +435,7 @@ Ghi chú:
 - `/play` nhận liên kết hoặc từ khóa; `source` chọn `youtube`, `youtubemusic` hoặc `soundcloud` cho từ khóa; `next` chèn bài lên đầu hàng đợi. Từ khóa chỉ phát kết quả tốt nhất; playlist và Mix được thêm toàn bộ (tối đa 300 bài mỗi lần, bài trùng bị bỏ qua), hàng đợi tối đa 1000 bài.
 - `/autoplay` nhận `state` (`on`/`off`) và `mode` (`related`/`seed`); `/radio` nhận liên kết hoặc từ khóa. `/autoplay` cần quyền DJ khi đã đặt vai trò DJ, `/radio` và `/similar` thì không. `/autoplay` chỉ đổi cài đặt nên dùng được khi bạn không ở trong kênh thoại (không cần player hay quyền vào kênh); việc tự thêm bài vẫn cần có người trong kênh thoại.
 - `/seek` nhận `mm:ss`, `h:mm:ss` hoặc số giây. `/volume` nhận 0-150.
-- Các lệnh kiểm duyệt và quyền của chúng được mô tả ở [Kiểm duyệt](#kiểm-duyệt).
+- Các lệnh kiểm duyệt và quyền của chúng được mô tả ở [Kiểm duyệt](#kiểm-duyệt), các lệnh cấp độ ở [Cấp độ](#cấp-độ).
 
 ## Vai trò DJ và `/settings`
 
@@ -441,13 +445,14 @@ Ghi chú:
 - `/settings language locale` (v1.3): ngôn ngữ của bot trong máy chủ này: `English`, `Tiếng Việt` hoặc `Mặc định của bot` (xóa lựa chọn, quay về `DEFAULT_LOCALE`). Câu trả lời xác nhận dùng ngôn ngữ mới và tin nhắn "Đang phát" được vẽ lại.
 - `/settings mod-log [channel]` (v1.4): kênh nhận nhật ký kiểm duyệt (kênh văn bản hoặc kênh thông báo); bỏ trống `channel` để tắt nhật ký. Bot từ chối kênh mà nó không gửi được embed (Xem kênh, Gửi tin nhắn, Nhúng liên kết).
 - `/settings mod-dm enabled` (v1.4): có gửi tin nhắn riêng cho người dùng khi bị cấm, đuổi, hạn chế hoặc cảnh cáo hay không (mặc định bật).
-- `/settings view` cũng hiển thị trạng thái và chế độ autoplay (đặt bằng `/autoplay`), ngôn ngữ (tên ngôn ngữ đã chọn, hoặc `Mặc định (<ngôn ngữ của DEFAULT_LOCALE>)`), kênh nhật ký kiểm duyệt và cài đặt tin nhắn riêng.
+- `/settings leveling [enabled] [announce] [channel]` (v1.4): bật hoặc tắt hệ thống cấp độ và chọn nơi gửi thông báo lên cấp (xem [Cấp độ](#cấp-độ)); không chọn tùy chọn nào thì hiển thị cài đặt cấp độ hiện tại.
+- `/settings view` cũng hiển thị trạng thái và chế độ autoplay (đặt bằng `/autoplay`), ngôn ngữ (tên ngôn ngữ đã chọn, hoặc `Mặc định (<ngôn ngữ của DEFAULT_LOCALE>)`), kênh nhật ký kiểm duyệt, cài đặt tin nhắn riêng, hệ thống cấp độ có bật hay không và nơi gửi thông báo lên cấp.
 - Chỉ người có quyền **Manage Server** mới dùng được `/settings`.
 - Khi chưa đặt vai trò DJ, mọi người trong kênh thoại đều dùng được các lệnh điều khiển.
 - Khi đã đặt vai trò DJ, các lệnh điều khiển (tạm dừng, dừng, âm lượng, lặp, ...) chỉ dành cho người có vai trò DJ hoặc quyền Manage Server. Ngoại lệ: người đang nghe một mình cùng bot; người đã thêm bài được phép `/skip`, `/previous`, `/remove`, `/seek`, `/forward`, `/rewind` trên bài của chính mình.
 - Nếu vai trò DJ bị xóa khỏi máy chủ, bot coi như chưa đặt vai trò DJ và tự xóa thiết lập đó, nên người dùng không bị khóa khỏi các lệnh điều khiển.
 - Cài đặt được lưu trong PostgreSQL khi `STORAGE_DRIVER=persistent`; với `memory` chúng mất khi bot khởi động lại.
-- Xóa kênh nhật ký kiểm duyệt sẽ xóa cài đặt `/settings mod-log`, xóa vai trò DJ sẽ xóa cài đặt vai trò DJ. Mỗi lần xóa được áp dụng bằng một câu lệnh cập nhật cơ sở dữ liệu, nên xóa cả một danh mục cùng lúc không làm một ID đã gỡ quay lại.
+- Xóa kênh nhật ký kiểm duyệt hoặc kênh thông báo lên cấp sẽ xóa cài đặt đó và gỡ kênh khỏi danh sách kênh không tính XP; xóa một vai trò sẽ xóa cài đặt vai trò DJ, gỡ vai trò khỏi danh sách vai trò không tính XP và xóa phần thưởng cấp độ của nó. Mỗi lần xóa được áp dụng bằng một câu lệnh cập nhật cơ sở dữ liệu, nên xóa cả một danh mục cùng lúc không làm một ID đã gỡ quay lại.
 
 ## Kiểm duyệt
 
@@ -476,6 +481,26 @@ v1.4 thêm các lệnh kiểm duyệt. Mọi câu trả lời của chúng chỉ
 - Khi PostgreSQL không khả dụng: `/ban`, `/unban`, `/kick` và `/timeout` vẫn chạy và câu trả lời báo vụ chưa được lưu; `/warn`, `/warnings` và `/case` báo hồ sơ tạm thời không khả dụng. Với `STORAGE_DRIVER=memory`, hồ sơ chỉ giữ tới khi bot khởi động lại.
 - Bot không lọc nội dung tin nhắn. Việc quản lý quy tắc AutoMod của chính Discord được lên kế hoạch cho web dashboard.
 
+## Cấp độ
+
+v1.4 thêm XP và cấp độ. Hệ thống cấp độ tắt ở mọi máy chủ cho tới khi người quản lý bật bằng `/settings leveling enabled:true`.
+
+- XP: mỗi tin nhắn hợp lệ nhận ngẫu nhiên 15-25 XP nhân với hệ số XP của máy chủ (10-500 %, mặc định 100 %), tối đa một lần mỗi 60 giây cho mỗi thành viên và máy chủ. Thời gian chờ được chia sẻ qua Redis (giữ trong tiến trình bot khi Redis không khả dụng). Bot, webhook, tin nhắn hệ thống và tin nhắn riêng không nhận XP; tin nhắn trong kênh bị bỏ qua (kênh bị bỏ qua tính cả các chủ đề của nó, danh mục bị bỏ qua tính cả các kênh trong đó) hoặc của thành viên có vai trò bị bỏ qua cũng vậy. XP tối đa là 2.000.000.000 (khoảng cấp 1058).
+- Cấp độ: lên từ cấp `l` tới `l + 1` cần `5 × l² + 50 × l + 100` XP. Tổng XP cần cho mỗi cấp:
+
+| Cấp     | 1   | 2   | 3   | 5     | 10    | 20     | 30     | 50      | 100       |
+| ------- | --- | --- | --- | ----- | ----- | ------ | ------ | ------- | --------- |
+| Tổng XP | 100 | 255 | 475 | 1.150 | 4.675 | 23.850 | 67.525 | 268.375 | 1.899.250 |
+
+- `/rank [user]` (trả lời công khai): cấp độ, XP trong cấp hiện tại, tổng XP, thứ hạng và thanh tiến độ. Thứ hạng là vị trí của thành viên trên bảng xếp hạng (thành viên bằng XP được xếp theo ID người dùng).
+- `/leaderboard [page]` (trả lời công khai): 10 thành viên mỗi trang, có nút trang trước/sau; trang vượt quá cuối sẽ hiển thị trang cuối.
+- `/xp add|remove user amount` (1-1.000.000), `/xp set user xp` (0-2.000.000.000) và `/xp reset user` (cần Manage Server; chỉ bạn thấy câu trả lời) thay đổi XP của một thành viên. Cấp độ đi theo XP, kể cả khi giảm, và vai trò thưởng được cập nhật. Các thay đổi này không bao giờ được thông báo.
+- Thông báo lên cấp: `/settings leveling announce` gửi tới `Kênh của tin nhắn` (mặc định), `Kênh đã cấu hình` (đặt bằng tùy chọn `channel`; chỉ chọn `channel` cũng là chọn chế độ này; khi bot không gửi được vào đó thì dùng kênh của tin nhắn), `Tin nhắn riêng` hoặc không gửi (`Tắt`). Bot từ chối `channel` mà nó không gửi được embed (Xem kênh, Gửi tin nhắn, Nhúng liên kết). Thông báo nhắc tên thành viên mà không ping và dùng ngôn ngữ của máy chủ; lên nhiều cấp một lúc chỉ được thông báo một lần.
+- Vai trò thưởng: tối đa 25 phần thưởng, mỗi cấp một vai trò (cấp 1-1000). Ở chế độ `stack` (mặc định) thành viên giữ mọi phần thưởng tới cấp của mình; ở chế độ `highest` chỉ giữ phần thưởng của cấp cao nhất đã đạt. Phần thưởng được áp dụng khi lên cấp và sau `/xp`. Bot cần quyền Manage Roles và vai trò của bot phải nằm trên mọi vai trò thưởng; vai trò do tích hợp quản lý và vai trò không thấp hơn vai trò của bot bị bỏ qua và được ghi log một lần.
+- Cài đặt không có lệnh slash: hệ số XP, kênh và vai trò bị bỏ qua, vai trò thưởng và chế độ của chúng, cùng trang bảng xếp hạng công khai được đặt trong web dashboard. Không có dashboard thì chúng giữ giá trị mặc định (100 %, không bỏ qua gì, không có phần thưởng, không có bảng xếp hạng công khai).
+- Xóa một kênh hoặc vai trò sẽ gỡ nó khỏi cài đặt cấp độ, và xóa một vai trò thưởng sẽ xóa phần thưởng đó. Khi bot bị xóa khỏi một máy chủ, vai trò thưởng bị xóa cùng cài đặt; XP của thành viên (và hồ sơ kiểm duyệt) được giữ lại.
+- Khi PostgreSQL không khả dụng: tin nhắn không nhận XP trong thời gian đó (không xếp hàng chờ), và `/rank`, `/leaderboard`, `/xp` báo dữ liệu cấp độ tạm thời không khả dụng. Với `STORAGE_DRIVER=memory`, XP chỉ giữ tới khi bot khởi động lại.
+
 ## Ngôn ngữ
 
 - Bot hỗ trợ `en` (tiếng Anh, mặc định) và `vi` (tiếng Việt).
@@ -499,7 +524,7 @@ v1.4 thêm các lệnh kiểm duyệt. Mọi câu trả lời của chúng chỉ
 - **Giới hạn của bộ lọc SSRF**: bộ lọc chỉ kiểm tra tên máy chủ (host) ghi trong liên kết. Nó không phân giải DNS (một tên miền trỏ tới địa chỉ nội bộ vẫn lọt qua) và không theo dõi chuyển hướng (redirect). Nếu chạy bot công khai, hãy thêm giới hạn ở tầng mạng cho container Lavalink (chặn egress tới dải IP nội bộ, link-local và metadata đám mây).
 - PostgreSQL và Redis đều yêu cầu mật khẩu (và không được publish trong stack production). Chuỗi kết nối, mật khẩu và `LASTFM_API_KEY` được che khỏi log và lỗi. `PLAY_HISTORY=true` lưu ID người yêu cầu từng bài; chỉ bật khi cần và nêu rõ với người dùng.
 - Bot không mở cổng HTTP nào; chỉ kết nối đi ra tới Discord và Lavalink. Kiểm tra sức khỏe của container dùng tệp heartbeat chứ không dùng cổng mạng.
-- Intents tối thiểu: `Guilds` và `GuildVoiceStates`.
+- Intents tối thiểu: `Guilds`, `GuildVoiceStates` và `GuildMessages` (không cái nào là privileged; nội dung tin nhắn không được đọc).
 
 ## Hạn chế đã biết
 
@@ -512,6 +537,7 @@ v1.4 thêm các lệnh kiểm duyệt. Mọi câu trả lời của chúng chỉ
 - **Chế độ 24/7**: có trong mã nhưng chưa có lệnh bật; mặc định tắt.
 - **Một node Lavalink**: chỉ dùng một node, chưa cân bằng tải nhiều node.
 - **Kiểm duyệt**: chỉ hành động làm qua lệnh của bot mới được ghi lại; cấm, đuổi hay hạn chế bằng menu của chính Discord không tạo vụ và không ghi nhật ký kiểm duyệt. `/purge` chỉ xét 100 tin nhắn gần nhất và không xóa được tin cũ hơn 14 ngày. Không có cấm tạm thời và không tự xử phạt sau một số lần cảnh cáo.
+- **Cấp độ**: không cộng XP khi PostgreSQL không khả dụng (không xếp hàng chờ); trình lưu trữ `memory` chỉ giữ XP tới khi bot khởi động lại. Không có XP theo kênh thoại, không có thẻ hạng dạng ảnh, XP không giảm dần theo thời gian và không có lệnh đặt lại XP cả máy chủ. Hệ số XP, danh sách bỏ qua và vai trò thưởng chỉ đổi được trong web dashboard.
 - Bandcamp và Twitch chỉ nhận liên kết (không có tìm kiếm). Kênh Stage chưa được hỗ trợ.
 - `bcsearch:` không phải tính năng của Lavalink nên không có tìm kiếm Bandcamp.
 
@@ -576,9 +602,19 @@ Chưa được kiểm chứng ở v1.4 (kiểm duyệt):
 - Nút chuyển trang của `/warnings list` trên tin nhắn thật.
 - Đăng ký 35 lệnh lên Discord, và nâng cấp một stack đang chạy thật lên v1.4 (migration `0002` trên dữ liệu thật).
 
+Chưa được kiểm chứng ở v1.4 (cấp độ):
+
+- XP từ tin nhắn thật trong một máy chủ thật (sự kiện `GuildMessages` và dữ liệu thành viên đi kèm).
+- Thông báo lên cấp trong kênh thật và tin nhắn riêng, cách embed của `/rank` và `/leaderboard` hiển thị trong ứng dụng thật, và nút chuyển trang của `/leaderboard` trên tin nhắn thật.
+- Vai trò thưởng với thứ bậc vai trò thật (Manage Roles, thứ tự vai trò, vai trò do tích hợp quản lý).
+- `/settings leveling channel` từ chối một kênh thật mà bot không gửi tin nhắn được.
+- Đăng ký 38 lệnh lên Discord, và nâng cấp một stack đang chạy thật (migration `0003` trên dữ liệu thật).
+
 Đã kiểm chứng ở v1.4 (kiểm duyệt; không có token Discord thật, container PostgreSQL 18.6 / Redis 8.8.3 dùng một lần): `npm run typecheck`, `lint`, `build`, `check-commands` (35 lệnh) và `npm test` đạt; 26 lệnh hiện có ngoài `/settings` được tuần tự hóa y hệt trước đây và `/settings` chỉ thêm `mod-log` và `mod-dm`; mọi lệnh mới có quyền thành viên mặc định, bản địa hóa tiếng Việt và giới hạn tùy chọn đúng; migration `0002_moderation` áp dụng và chạy lặp lại không lỗi (3 dòng trong `drizzle.__drizzle_migrations`) và ràng buộc kiểm tra từ chối hành động lạ; 20 lần tạo vụ song song trong một máy chủ nhận số 1 đến 20 và số đã xóa không được dùng lại; khi dừng PostgreSQL, tạo vụ trả kết quả ngay mà không lỗi và kho cài đặt xếp hàng việc gỡ kênh và vai trò rồi chạy lại đúng câu lệnh cập nhật đó sau khi hồi phục; cơ sở dữ liệu chỉ có `0000` và `0001` làm bot ghi log `Database schema is missing or outdated`; luồng kiểm duyệt (thứ tự kiểm tra, tin nhắn riêng trước khi cấm hoặc đuổi và sau khi hạn chế hoặc cảnh cáo, ánh xạ lỗi, ghi chú) với đối tượng Discord giả; khởi động offline với token giả (migration áp dụng, kết nối Redis và PostgreSQL, đúng một dòng `Login failed`, không lộ bí mật trong log).
 
-Khuyến nghị thử nhanh trên một máy chủ thật: `/play never gonna give you up`, `/pause`, `/resume`, `/skip`, `/queue` và các nút trên tin nhắn "Đang phát"; sau đó `/settings mod-log`, `/warn` và `/case view` với một thành viên thử.
+Đã kiểm chứng ở v1.4 (cấp độ; không có token Discord thật, container PostgreSQL 18.6 / Redis 8.8.3 dùng một lần): `npm run typecheck`, `lint`, `build`, `check-commands` (38 lệnh) và `npm test` đạt; 26 lệnh hiện có ngoài `/settings` được tuần tự hóa y hệt trước đây và `/settings` chỉ thêm `mod-log`, `mod-dm` và `leveling`; `/leaderboard page` giới hạn 1-10.000 và các tùy chọn của `/xp` giới hạn 1-1.000.000 và 0-2.000.000.000; migration `0003_leveling` áp dụng được trên cơ sở dữ liệu trống và trên cơ sở dữ liệu chỉ có `0000`-`0002` (4 dòng trong `drizzle.__drizzle_migrations`), và ràng buộc của nó từ chối XP âm và một vai trò thưởng dùng hai lần; công thức XP khớp bảng cấp độ (công thức đóng bằng tổng cộng dồn tới cấp 1100); 50 lần cộng XP song song cho một thành viên cộng đúng tổng và báo mỗi lần lên cấp một lần; cộng XP chạy đua với `/xp set 0`, và `/xp add` cho thành viên chưa có dòng dữ liệu chạy đua với 20 lần cộng XP, không bao giờ để cấp độ vượt quá XP, không bao giờ lỗi và không bao giờ đánh dấu PostgreSQL không khả dụng; với 50.000 thành viên mẫu, truy vấn trang bảng xếp hạng đọc `member_levels_guild_xp_idx` mà không cần sắp xếp và mọi thứ hạng bằng vị trí trên bảng xếp hạng, kể cả khi bằng XP; xóa song song các kênh và vai trò bị bỏ qua (cả khi PostgreSQL không khả dụng, và với giá trị do tiến trình khác ghi) không để lại ID đã xóa; mục cài đặt trong Redis của v1.3 và của bản v1.4 trước đó đọc được với giá trị mặc định của cấp độ; `BotClient` dựng với cấu hình giả yêu cầu đúng `Guilds`, `GuildVoiceStates` và `GuildMessages`; bộ xử lý tin nhắn, `/rank`, `/leaderboard`, `/xp` và `/settings leveling` hoạt động như mô tả ở trên với đối tượng Discord giả; bot đã build khởi động ngoại tuyến áp dụng 4 migration và dừng ở đúng một dòng `Login failed`.
+
+Khuyến nghị thử nhanh trên một máy chủ thật: `/play never gonna give you up`, `/pause`, `/resume`, `/skip`, `/queue` và các nút trên tin nhắn "Đang phát"; sau đó `/settings mod-log`, `/warn` và `/case view` với một thành viên thử; sau đó `/settings leveling enabled:true`, vài tin nhắn cách nhau một phút, `/rank` và `/leaderboard`.
 
 ## Lưu ý pháp lý
 
@@ -612,9 +648,10 @@ src/
   index.ts            Điểm vào, đăng nhập và tắt bot an toàn
   config/             Đọc và kiểm tra biến môi trường, hằng số
   client/             BotClient và đăng ký sự kiện
-  commands/           Lệnh theo nhóm: general/, music/, moderation/, settings/ và index.ts (danh sách tường minh)
-  events/             Sự kiện Discord (ready, guildDelete, guildRoleDelete, channelDelete, interaction, voice state)
+  commands/           Lệnh theo nhóm: general/, music/, moderation/, leveling/, settings/ và index.ts (danh sách tường minh)
+  events/             Sự kiện Discord (ready, guildDelete, guildRoleDelete, channelDelete, messageCreate, interaction, voice state)
   moderation/         Kiểm duyệt: kiểm tra mục tiêu, thời lượng, giới hạn, luồng xử lý, nhật ký kiểm duyệt, kiểm tra quyền
+  leveling/           Cấp độ: công thức XP, quy tắc tính XP, chênh lệch vai trò thưởng, bộ xử lý tin nhắn (leveling-service.ts)
   interactions/       Xử lý lệnh, nút bấm, autocomplete, cooldown
   music/              Lavalink, hàng đợi, kiểm tra điều kiện, điều khiển, tìm kiếm, lời bài hát
     discovery/        Engine gợi ý, autoplay, bộ lọc và các nguồn (providers/)
@@ -635,7 +672,7 @@ Makefile              Lệnh tắt gọi scripts/ hoặc docker compose (make he
 docs/DEPLOY.md        Hướng dẫn triển khai chi tiết (tiếng Anh); docs/DEPLOY.vi.md bản tiếng Việt
 README.vi.md          README tiếng Việt (README.md là bản tiếng Anh)
 backups/              Sao lưu PostgreSQL do backup.sh tạo (bị .gitignore loại trừ)
-drizzle/              Migration SQL đã sinh (0000_init.sql, 0001_guild_language.sql, 0002_moderation.sql của v1.4; giữ trong git, không sửa tay)
+drizzle/              Migration SQL đã sinh (0000_init.sql, 0001_guild_language.sql, 0002_moderation.sql và 0003_leveling.sql của v1.4; giữ trong git, không sửa tay)
 drizzle.config.ts     Cấu hình drizzle-kit
 lavalink/             application.yml (thư mục plugins/ chỉ còn .gitkeep; plugin nằm trong volume Docker)
 ```

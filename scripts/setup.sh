@@ -285,7 +285,7 @@ fi
 client_id="$(env_get DISCORD_CLIENT_ID)"
 printf '\n'
 ok "Setup complete. Secret values are not printed; they are stored in $ENV_FILE."
-printf '\nInvite link for adding the bot to a server (requires permission to add bots):\n  https://discord.com/oauth2/authorize?client_id=%s&scope=bot%%20applications.commands&permissions=1101662350342\n' "$client_id"
+printf '\nInvite link for adding the bot to a server (requires permission to add bots):\n  https://discord.com/oauth2/authorize?client_id=%s&scope=bot%%20applications.commands&permissions=1101930785798\n' "$client_id"
 cat <<'EOF'
 
 Next steps:

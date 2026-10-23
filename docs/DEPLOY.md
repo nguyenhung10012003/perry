@@ -92,11 +92,11 @@ make ps
 ### Upgrading to v1.4
 
 - `./scripts/update.sh` backs up PostgreSQL first, as always. Keep that backup until the upgrade works.
-- The bot applies migration `0002_moderation` automatically on startup: it adds the `mod_cases` and `mod_case_counters` tables and the `guild_settings.mod_log_channel_id` and `mod_dm_target` columns. When running the bot on the host instead of Docker, run `npm run db:migrate` before starting it; otherwise the bot logs `Database schema is missing or outdated` and runs in degraded mode.
-- The slash commands are re-registered once because their definitions changed (8 moderation commands, `/settings mod-log` and `/settings mod-dm`).
-- The bot's role in each server needs the new permissions Kick Members, Ban Members, Timeout Members, Manage Messages and Read Message History: open the new invite link from the README again, or grant them to the bot's role by hand.
-- Move the bot's role above the members it should moderate (Server Settings > Roles); Discord refuses actions on members whose highest role is not below the bot's.
-- No new gateway intent and no new `.env` variable are needed.
+- The bot applies migrations `0002_moderation` and `0003_leveling` automatically on startup. `0002` adds the `mod_cases` and `mod_case_counters` tables and the `guild_settings.mod_log_channel_id` and `mod_dm_target` columns; `0003` adds the `member_levels` and `level_role_rewards` tables and the leveling columns of `guild_settings` (leveling stays off in every server until it is turned on). When running the bot on the host instead of Docker, run `npm run db:migrate` before starting it; otherwise the bot logs `Database schema is missing or outdated` and runs in degraded mode.
+- The slash commands are re-registered once because their definitions changed (8 moderation commands, `/rank`, `/leaderboard`, `/xp`, `/settings mod-log`, `/settings mod-dm` and `/settings leveling`).
+- The bot's role in each server needs the new permissions Kick Members, Ban Members, Timeout Members, Manage Messages, Read Message History and Manage Roles: open the new invite link from the README again, or grant them to the bot's role by hand.
+- Move the bot's role above the members it should moderate and above every level reward role (Server Settings > Roles); Discord refuses actions on members and roles that are not below the bot's highest role.
+- The bot now also uses the `GuildMessages` gateway intent (for XP). It is not privileged, so nothing changes in the Developer Portal. No new `.env` variable is needed.
 
 ## 5. Backups, restore, retention
 
@@ -247,4 +247,5 @@ Run `./scripts/backup.sh` and copy the backup off the machine before using `down
 - First build time on a clean machine; real disk and RAM usage on a VPS.
 - v1.3: how localized commands render in real Discord clients, `/settings language` in a real server, upgrading a real running stack (details in the README).
 - v1.4 moderation: every moderation action against real Discord members (hierarchy, DMs, audit-log reasons, `/purge`), the mod log in a real client, the re-invite permission update, upgrading a real running stack to v1.4 (details in the README).
+- v1.4 leveling: XP from real messages, level-up messages in real channels, role rewards with a real role hierarchy, the `/leaderboard` buttons in a real client (details in the README).
 - Every item listed in the [README section "What has not been verified at runtime"](../README.md#what-has-not-been-verified-at-runtime) (v1 and v1.1) still applies.
