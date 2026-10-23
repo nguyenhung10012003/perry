@@ -5,9 +5,11 @@
 #   lavalink       audio server (plugins are downloaded on the first start, 30-90 s)
 #   postgres       settings and optional play history
 #   redis          cooldowns, caches and player snapshots
+#   web            optional dashboard and landing page (COMPOSE_PROFILES=web), same image as the bot
 #
-# Nothing is published to the host: the bot reaches the other services by service name over
-# the private networks below. Lavalink, Postgres and Redis are never reachable from the internet.
+# Only the optional web service publishes a port, on 127.0.0.1 for a reverse proxy on this host. The bot reaches
+# the other services by service name over the private networks below. Lavalink, Postgres and Redis are never
+# reachable from the internet.
 # Secrets come from .env (create it with ./scripts/setup.sh); there are no default passwords.
 #
 # To run only the infrastructure for `npm run dev`, use docker-compose.dev.yml instead.
@@ -20,14 +22,17 @@ x-logging: &default-logging
     max-size: "10m"
     max-file: "3"
 
+# Shared by bot and web: one image serves both (BuildKit reuses the cached layers).
+x-perry-build: &perry-build
+  context: .
+  args:
+    VERSION: "${PERRY_VERSION:-dev}"
+    REVISION: "${PERRY_REVISION:-unknown}"
+    SOURCE_URL: "${PERRY_SOURCE_URL:-}"
+
 services:
   bot:
-    build:
-      context: .
-      args:
-        VERSION: "${PERRY_VERSION:-dev}"
-        REVISION: "${PERRY_REVISION:-unknown}"
-        SOURCE_URL: "${PERRY_SOURCE_URL:-}"
+    build: *perry-build
     # Set BOT_IMAGE in .env (for example ghcr.io/<owner>/<repo>:1.2.0) to pull a prebuilt image instead.
     image: "${BOT_IMAGE:-perry-bot:local}"
     init: true
@@ -84,6 +89,63 @@ services:
     #     limits:
     #       cpus: "1.0"
     #       memory: 512M
+
+  web:
+    # Dashboard and landing page (v1.4, Next.js standalone server). Opt-in: COMPOSE_PROFILES=web in .env.
+    profiles: ["web"]
+    build: *perry-build
+    image: "${BOT_IMAGE:-perry-bot:local}"
+    command: ["node", "web-standalone/start.cjs"]
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 15s
+    read_only: true
+    tmpfs:
+      - /tmp
+      # Next.js may create its runtime cache here; the root filesystem is read-only. uid/gid of the image's node user.
+      - /app/web-standalone/web/.next/cache:uid=1000,gid=1000,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+    networks:
+      - data
+    # Only for a reverse proxy on this host. Never publish on 0.0.0.0.
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      bot:
+        condition: service_started
+    environment:
+      # No bot token: guild data and AutoMod calls go through the bot over Redis (DP-10 b).
+      DISCORD_CLIENT_ID: "${DISCORD_CLIENT_ID:?DISCORD_CLIENT_ID is not set in .env, run ./scripts/setup.sh}"
+      # No :? guards: Compose evaluates guards for the whole file, so bot-only stacks must not need them.
+      DISCORD_CLIENT_SECRET: "${DISCORD_CLIENT_SECRET:-}"
+      PUBLIC_URL: "${PUBLIC_URL:-}"
+      SESSION_SECRET: "${SESSION_SECRET:-}"
+      # start.cjs maps these to the HOSTNAME/PORT that the Next.js server reads (Docker sets HOSTNAME to the container id).
+      WEB_HOST: "0.0.0.0"
+      WEB_PORT: "3000"
+      WEB_TRUST_PROXY: "${WEB_TRUST_PROXY:-loopback,uniquelocal}"
+      NEXT_TELEMETRY_DISABLED: "1"
+      DATABASE_URL: "postgres://perry:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set in .env, run ./scripts/setup.sh}@postgres:5432/perry"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is not set in .env, run ./scripts/setup.sh}@redis:6379"
+      REDIS_KEY_PREFIX: "${REDIS_KEY_PREFIX:-perry}"
+      DEFAULT_LOCALE: "${DEFAULT_LOCALE:-en}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+      LOG_PRETTY: "${LOG_PRETTY:-false}"
+    # Overrides the image's heartbeat HEALTHCHECK, which is for the bot.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   # One-shot: the named volume is created root-owned, but Lavalink runs as uid 322.
   lavalink-init:

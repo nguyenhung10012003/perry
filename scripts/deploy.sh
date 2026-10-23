@@ -14,7 +14,8 @@ usage() {
 Usage: ./scripts/deploy.sh [options]
 
 Builds the bot image from source (or pulls BOT_IMAGE when it is set in .env), runs
-docker compose up -d and waits until postgres, redis, lavalink and bot are healthy.
+docker compose up -d and waits until postgres, redis, lavalink and bot (and web, when
+COMPOSE_PROFILES has web) are healthy.
 
 Options:
   --build-only    only build / pull the image, do not start the stack
@@ -106,3 +107,7 @@ Next steps:
   - ./scripts/doctor.sh    check the health of the stack
   - ./scripts/update.sh    update to a new version (backs up first)
 EOF
+if web_enabled; then
+  printf '  - Dashboard:             %s (served by your reverse proxy from 127.0.0.1:%s)\n' \
+    "$(effective_env PUBLIC_URL)" "$(effective_env WEB_PORT)"
+fi

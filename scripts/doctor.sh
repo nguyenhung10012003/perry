@@ -10,7 +10,8 @@ usage() {
 Usage: ./scripts/doctor.sh
 
 Checks (read-only) Docker, the .env file (prints variable NAMES only, never values), the state
-of the containers, Lavalink + plugins, PostgreSQL + migrations, Redis, the bot and published ports.
+of the containers, Lavalink + plugins, PostgreSQL + migrations, Redis, the bot, the optional web
+dashboard (COMPOSE_PROFILES=web) and published ports.
 Works even when the stack is stopped. Prints a PASS / FAIL / WARN / SKIP table.
 
 Exit codes: 0 no serious errors (warnings may remain), 1 at least one error.
@@ -118,6 +119,34 @@ else
     fi
   fi
   value=""
+  if web_enabled; then
+    missing_web=""
+    for name in $WEB_REQUIRED_ENV_NAMES; do
+      [ -n "$(env_get "$name")" ] || missing_web="$missing_web $name"
+    done
+    if [ -z "$missing_web" ]; then
+      row PASS "env web" "all set: $WEB_REQUIRED_ENV_NAMES"
+    else
+      row FAIL "env web" "missing or empty:$missing_web (./scripts/setup.sh --web)"
+    fi
+    value="$(env_get PUBLIC_URL)"
+    if [ -n "$value" ]; then
+      if public_url_valid "$value"; then
+        row PASS "public url" "an https origin (or http on loopback), no path"
+      else
+        row FAIL "public url" "must be an origin like https://perry.example.com (http only for localhost), no path or trailing slash, port 1-65535"
+      fi
+    fi
+    value="$(env_get SESSION_SECRET)"
+    if [ -n "$value" ] && [ "${#value}" -lt 32 ]; then
+      row FAIL "session secret" "shorter than 32 characters (./scripts/setup.sh generates 64 hex characters)"
+    elif [ -n "$value" ]; then
+      row PASS "session secret" "${#value} characters"
+    fi
+    value=""
+  else
+    row SKIP "web" "the dashboard is not enabled (COMPOSE_PROFILES has no web)"
+  fi
 fi
 
 # --- Containers -------------------------------------------------------------
@@ -160,6 +189,11 @@ service_row "container lavalink" lavalink
 LL_STATE="$STATE"
 service_row "container bot" bot
 BOT_STATE="$STATE"
+WEB_STATE="absent"
+if web_enabled; then
+  service_row "container web" web
+  WEB_STATE="$STATE"
+fi
 
 is_up() { [ "$1" = "healthy" ] || [ "$1" = "running" ] || [ "$1" = "unhealthy" ] || [ "$1" = "starting" ]; }
 
@@ -239,21 +273,51 @@ else
   row SKIP "bot login" "skipped because the bot is not running"
 fi
 
+# --- Web dashboard ----------------------------------------------------------
+if web_enabled; then
+  if is_up "$WEB_STATE"; then
+    health="$(svc_exec web wget -q -T 5 -O - http://127.0.0.1:3000/healthz 2>/dev/null || true)"
+    case "$health" in
+      *'"status":"ok"'*) row PASS "web health" "/healthz: Postgres and Redis reachable" ;;
+      *) row FAIL "web health" "/healthz is not ok (see ./scripts/logs.sh web)" ;;
+    esac
+  else
+    row SKIP "web health" "skipped because web is not running"
+  fi
+  if is_up "$REDIS_STATE"; then
+    prefix="$(effective_env REDIS_KEY_PREFIX)"
+    matches '^[a-z0-9_-]{1,32}$' "${prefix:-perry}" || prefix="perry"
+    ttl="$(svc_exec redis redis-cli TTL "${prefix:-perry}:v1:botguilds" 2>/dev/null || true)"
+    if matches '^[0-9]+$' "$ttl" && [ "$ttl" -gt 0 ]; then
+      row PASS "web bridge" "the bot publishes its guild list for the dashboard"
+    else
+      row WARN "web bridge" "the bot has not published its guild list; it is offline or older than 1.4 (the dashboard answers 503)"
+    fi
+  else
+    row SKIP "web bridge" "skipped because redis is not running"
+  fi
+fi
+
 # --- Published ports --------------------------------------------------------
 published=""
-for service in bot lavalink postgres redis lavalink-init; do
+for service in bot lavalink postgres redis lavalink-init web; do
   cid="$(service_cid "$service")"
   if [ -n "$cid" ]; then
     ports="$(docker port "$cid" 2>/dev/null || true)"
-    if [ -n "$ports" ]; then
-      published="$published $service"
+    if [ -z "$ports" ]; then
+      continue
     fi
+    # Only the web may publish, and only on 127.0.0.1 (for a reverse proxy on this host).
+    if [ "$service" = "web" ] && ! printf '%s\n' "$ports" | grep -vqE -- '-> 127\.0\.0\.1:[0-9]+$'; then
+      continue
+    fi
+    published="$published $service"
   fi
 done
 if [ -z "$published" ]; then
-  row PASS "published ports" "no ports are exposed to the host"
+  row PASS "published ports" "nothing is exposed beyond 127.0.0.1 (only the web may bind 127.0.0.1)"
 else
-  row FAIL "published ports" "services publishing ports to the host:$published (production should not expose ports)"
+  row FAIL "published ports" "services publishing ports to the host:$published (production exposes only the web, on 127.0.0.1)"
 fi
 
 printf '\n'

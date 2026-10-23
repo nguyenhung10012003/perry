@@ -9,6 +9,10 @@
 # Built or installed on the host; the image builds its own
 node_modules
 dist
+web/.next
+web/node_modules
+web/next-env.d.ts
+*.tsbuildinfo
 
 # Never send secrets or local state into the build context (also keeps .env.example out)
 .env*

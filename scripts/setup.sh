@@ -7,18 +7,21 @@ set -euo pipefail
 
 NON_INTERACTIVE=0
 SKIP_DOCKER_CHECK=0
+WEB=0
 
 usage() {
   cat <<'EOF'
 Usage: ./scripts/setup.sh [options]
 
 Creates the .env file (from .env.example), asks for DISCORD_TOKEN and DISCORD_CLIENT_ID,
-and generates the Lavalink / PostgreSQL / Redis passwords. Safe to re-run any number of
-times: existing values are never overwritten.
+and generates the Lavalink / PostgreSQL / Redis passwords and the web SESSION_SECRET. Safe to
+re-run any number of times: existing values are never overwritten.
 
 Options:
   --non-interactive   ask nothing; read DISCORD_TOKEN, DISCORD_CLIENT_ID (required),
                       DEV_GUILD_ID, LASTFM_API_KEY (optional) from the environment
+  --web               also set up the web dashboard: asks for PUBLIC_URL and DISCORD_CLIENT_SECRET
+                      (read from the environment with --non-interactive) and adds web to COMPOSE_PROFILES
   --env-file PATH     config file (default: .env, or the PERRY_ENV_FILE variable)
   --skip-docker-check skip the Docker / Compose check (only create the config file)
   -h, --help          show this help
@@ -32,6 +35,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --non-interactive) NON_INTERACTIVE=1 ;;
     --skip-docker-check) SKIP_DOCKER_CHECK=1 ;;
+    --web) WEB=1 ;;
     --env-file)
       if [ $# -lt 2 ] || [ -z "$2" ]; then
         err "--env-file requires a path."
@@ -67,6 +71,7 @@ RE_SNOWFLAKE='^[0-9]{17,20}$'
 RE_LASTFM='^[A-Za-z0-9]{8,64}$'
 RE_PASSWORD='^[A-Za-z0-9_-]+$'
 RE_PORT='^[0-9]{2,5}$'
+RE_CLIENT_SECRET='^[A-Za-z0-9_-]{16,128}$'
 
 # --- 1. Docker --------------------------------------------------------------
 if [ "$SKIP_DOCKER_CHECK" = "1" ]; then
@@ -131,7 +136,7 @@ resolve_value() {
       fi
       return 0
     fi
-    if matches "$regex" "$value"; then
+    if valid_value "$key" "$regex" "$value"; then
       RESOLVED="$value"
       return 0
     fi
@@ -145,11 +150,22 @@ resolve_value() {
   done
 }
 
+# valid_value KEY REGEX VALUE: PUBLIC_URL follows the shared rule (public_url_valid), the rest their REGEX.
+valid_value() {
+  if [ "$1" = "PUBLIC_URL" ]; then
+    public_url_valid "$3"
+  else
+    matches "$2" "$3"
+  fi
+}
+
 rule_text() {
   case "$1" in
     DISCORD_TOKEN) printf 'at least 20 characters from [A-Za-z0-9._~+/=_-], no spaces, quotes, $, # or line breaks.' ;;
     DEV_GUILD_ID | DISCORD_CLIENT_ID) printf '17-20 digits only.' ;;
     LASTFM_API_KEY) printf '8-64 letters and digits.' ;;
+    PUBLIC_URL) printf 'an origin like https://perry.example.com (https; http only for localhost, 127.0.0.1 or [::1]), no path or trailing slash, port 1-65535.' ;;
+    DISCORD_CLIENT_SECRET) printf '16-128 characters from [A-Za-z0-9_-] (Developer Portal > OAuth2 > Client Secret).' ;;
     *) printf 'see .env.example.' ;;
   esac
 }
@@ -158,6 +174,8 @@ NEW_DISCORD_TOKEN=""
 NEW_DISCORD_CLIENT_ID=""
 NEW_DEV_GUILD_ID=""
 NEW_LASTFM_API_KEY=""
+NEW_PUBLIC_URL=""
+NEW_DISCORD_CLIENT_SECRET=""
 
 resolve_value DISCORD_CLIENT_ID 1 "$RE_SNOWFLAKE" 0 "DISCORD_CLIENT_ID (Application ID)"
 NEW_DISCORD_CLIENT_ID="$RESOLVED"
@@ -167,6 +185,12 @@ resolve_value DEV_GUILD_ID 0 "$RE_SNOWFLAKE" 0 "DEV_GUILD_ID (optional, press En
 NEW_DEV_GUILD_ID="$RESOLVED"
 resolve_value LASTFM_API_KEY 0 "$RE_LASTFM" 0 "LASTFM_API_KEY (optional, press Enter to skip)"
 NEW_LASTFM_API_KEY="$RESOLVED"
+if [ "$WEB" = "1" ]; then
+  resolve_value PUBLIC_URL 1 "" 0 "PUBLIC_URL (public address of the dashboard, for example https://perry.example.com)"
+  NEW_PUBLIC_URL="$RESOLVED"
+  resolve_value DISCORD_CLIENT_SECRET 1 "$RE_CLIENT_SECRET" 1 "DISCORD_CLIENT_SECRET (OAuth2 client secret)"
+  NEW_DISCORD_CLIENT_SECRET="$RESOLVED"
+fi
 
 if [ -n "$MISSING" ]; then
   err "Missing required values:$MISSING"
@@ -228,6 +252,8 @@ write_value DISCORD_CLIENT_ID "$NEW_DISCORD_CLIENT_ID"
 write_value DISCORD_TOKEN "$NEW_DISCORD_TOKEN"
 write_value DEV_GUILD_ID "$NEW_DEV_GUILD_ID"
 write_value LASTFM_API_KEY "$NEW_LASTFM_API_KEY"
+write_value PUBLIC_URL "$NEW_PUBLIC_URL"
+write_value DISCORD_CLIENT_SECRET "$NEW_DISCORD_CLIENT_SECRET"
 
 # --- 5. Generated secrets (only when empty) ---------------------------------
 
@@ -258,6 +284,23 @@ for key in LAVALINK_PASSWORD POSTGRES_PASSWORD REDIS_PASSWORD; do
 done
 generated=""
 PASSWORDS_SEEN=""
+# Seals the Discord tokens of the web dashboard's sessions; generated for every install so enabling the web later
+# needs no extra step.
+if [ -z "$(env_get SESSION_SECRET)" ]; then
+  env_set SESSION_SECRET "$(random_hex 32)" || die "Could not write SESSION_SECRET."
+  ok "SESSION_SECRET: generated (64 hex characters)."
+else
+  ok "SESSION_SECRET: keeping the existing value."
+fi
+if [ "$WEB" = "1" ]; then
+  if web_enabled; then
+    ok "COMPOSE_PROFILES: web is already enabled."
+  else
+    profiles="$(env_get COMPOSE_PROFILES)"
+    env_set COMPOSE_PROFILES "${profiles:+$profiles,}web" || die "Could not write COMPOSE_PROFILES."
+    ok "COMPOSE_PROFILES: web added (the dashboard starts with the stack)."
+  fi
+fi
 
 # --- 6. Connection strings for host-run / dev-infra (production compose ignores them) ---
 
@@ -285,7 +328,11 @@ fi
 client_id="$(env_get DISCORD_CLIENT_ID)"
 printf '\n'
 ok "Setup complete. Secret values are not printed; they are stored in $ENV_FILE."
-printf '\nInvite link for adding the bot to a server (requires permission to add bots):\n  https://discord.com/oauth2/authorize?client_id=%s&scope=bot%%20applications.commands&permissions=1101930785798\n' "$client_id"
+printf '\nInvite link for adding the bot to a server (requires permission to add bots):\n  https://discord.com/oauth2/authorize?client_id=%s&scope=bot%%20applications.commands&permissions=1101930785830\n' "$client_id"
+if [ "$WEB" = "1" ] || web_enabled; then
+  printf '\nAdd this redirect in the Developer Portal (OAuth2 > Redirects): %s/auth/callback\n' "$(env_get PUBLIC_URL)"
+  printf 'Then serve the dashboard over HTTPS with a reverse proxy to 127.0.0.1:%s (see docs/DEPLOY.md).\n' "$(env_get WEB_PORT)"
+fi
 cat <<'EOF'
 
 Next steps:

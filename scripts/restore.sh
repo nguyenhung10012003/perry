@@ -18,7 +18,8 @@ Restores PostgreSQL from a backups/perry-*.dump file. This OVERWRITES the curren
   1. checks the file with pg_restore --list
   2. asks for confirmation (type yes) unless --yes is given; cannot run non-interactively without --yes
   3. backs up the current state to backups/perry-prerestore-<timestamp>.dump first
-  4. stops the bot, runs pg_restore --clean --if-exists, then starts the bot again
+  4. stops the bot (and the web dashboard when COMPOSE_PROFILES has web), runs
+     pg_restore --clean --if-exists, then starts them again
 
 Redis is not part of the backup, so it is not restored (caches / snapshots are rebuilt automatically).
 
@@ -90,7 +91,7 @@ printf '\n'
 warn "About to restore the 'perry' database from this file (cannot be undone, except with the safety backup below):"
 warn "  $FILE ($(human_size "$(file_size "$FILE")"))"
 warn "The current data (server settings, play history...) will be replaced by the contents of the file."
-warn "The bot will be stopped during the restore. Redis is not restored."
+warn "The bot (and the web dashboard, when enabled) will be stopped during the restore. Redis is not restored."
 if [ "$ASSUME_YES" != "1" ]; then
   if [ ! -t 0 ]; then
     die "No terminal to confirm on. Add --yes if you are sure you want to continue."
@@ -107,25 +108,36 @@ if ! backup_dump "$safety"; then
   die "Could not create the safety backup, so stopping here; nothing was changed."
 fi
 
-info "Stopping the bot..."
-if ! compose stop bot; then
-  die "Could not stop the bot, so nothing was restored. Safety backup: $safety"
+restore_services="bot"
+stopped_label="the bot"
+if web_enabled; then
+  restore_services="bot web"
+  stopped_label="the bot and the web"
+fi
+info "Stopping $stopped_label..."
+# shellcheck disable=SC2086  # one word per service
+if ! compose stop $restore_services; then
+  die "Could not stop $stopped_label, so nothing was restored. Safety backup: $safety"
 fi
 
 info "Restoring (pg_restore --clean --if-exists)..."
 if ! svc_exec_i postgres pg_restore --clean --if-exists --no-owner --no-privileges -U perry -d perry <"$FILE"; then
-  err "pg_restore reported an error. The bot is KEPT STOPPED."
+  err "pg_restore reported an error. $stopped_label: KEPT STOPPED."
   err "The data from before the restore is in: $safety"
   err "Try again: ./scripts/restore.sh $FILE --yes"
   err "Or go back to the previous state: ./scripts/restore.sh $safety --yes"
-  err "When done, start the bot with: ./scripts/deploy.sh --no-build"
+  err "When done, start them with: ./scripts/deploy.sh --no-build"
   exit 1
 fi
 
-info "Starting the bot again..."
-if ! compose start bot; then
-  die "The restore finished but the bot could not be started. Run ./scripts/deploy.sh --no-build."
+info "Starting $stopped_label again..."
+# shellcheck disable=SC2086  # one word per service
+if ! compose start $restore_services; then
+  die "The restore finished but $stopped_label could not be started. Run ./scripts/deploy.sh --no-build."
 fi
 ok "Restored from $FILE. Bot: $(state_label "$(service_state bot)")."
+if web_enabled; then
+  info "Web: $(state_label "$(service_state web)")."
+fi
 info "Safety backup from before the restore: $safety"
 info "Note: Redis is not restored (caches / snapshots are rebuilt automatically)."

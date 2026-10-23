@@ -4,6 +4,9 @@
 #   docker compose -f docker-compose.dev.yml --profile storage up -d        Lavalink + Postgres + Redis
 #   npm run dev:lavalink | lavalink:up | lavalink:down | lavalink:logs      shortcuts for the commands above
 #
+# The web dashboard has no service here either: run it on the host with `npm run web:dev` (port 3000,
+# PUBLIC_URL=http://localhost:3000) next to `npm run dev`.
+#
 # Why a separate file: Compose evaluates every ${VAR:?message} guard of the WHOLE file, even for services
 # under an inactive profile or pulled in through `extends`. So the Postgres and Redis password checks
 # cannot live next to a guard-free Lavalink in docker-compose.yml. Here only LAVALINK_PASSWORD is guarded

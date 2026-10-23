@@ -15,6 +15,11 @@ export ROOT_DIR
 REQUIRED_ENV_NAMES="DISCORD_TOKEN DISCORD_CLIENT_ID LAVALINK_PASSWORD POSTGRES_PASSWORD REDIS_PASSWORD"
 # Services of the production stack, in start order.
 STACK_SERVICES="lavalink-init postgres redis lavalink bot"
+# Names the optional web dashboard (COMPOSE_PROFILES=web) needs in addition.
+WEB_REQUIRED_ENV_NAMES="DISCORD_CLIENT_SECRET PUBLIC_URL SESSION_SECRET"
+# The PUBLIC_URL rule, shared with web/server/config.ts (PUBLIC_URL_RE) and doctor.sh: an origin only, https for
+# any host, http only for loopback, no path or trailing slash; a port must be 1-65535 (checked separately).
+PUBLIC_URL_RE='^(https://[A-Za-z0-9.-]+|http://(localhost|127\.0\.0\.1|\[::1\]))(:[0-9]{1,5})?$'
 # Only backup files with exactly this name are ever pruned by the retention logic.
 BACKUP_NAME_RE='^perry-[0-9]{8}-[0-9]{6}\.dump$'
 # shellcheck disable=SC2034  # used by the scripts that source this file
@@ -142,10 +147,52 @@ env_set() {
   mv "$tmp" "$file"
 }
 
-# missing_env_names: space separated required names that are absent or empty.
+# web_enabled: COMPOSE_PROFILES (process environment first, then the env file, as Compose reads it) lists web.
+web_enabled() {
+  local profiles item
+  profiles="$(effective_env COMPOSE_PROFILES)"
+  local IFS=','
+  for item in $profiles; do
+    item="${item#"${item%%[![:space:]]*}"}"
+    item="${item%"${item##*[![:space:]]}"}"
+    if [ "$item" = "web" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# stack_services: STACK_SERVICES, plus web when the dashboard profile is enabled.
+stack_services() {
+  if web_enabled; then
+    printf '%s web\n' "$STACK_SERVICES"
+  else
+    printf '%s\n' "$STACK_SERVICES"
+  fi
+}
+
+# public_url_valid VALUE: 0 when VALUE follows the PUBLIC_URL rule (PUBLIC_URL_RE and a port 1-65535). Prints nothing.
+public_url_valid() {
+  local value="$1" rest tail port
+  matches "$PUBLIC_URL_RE" "$value" || return 1
+  rest="${value#*://}"
+  case "$rest" in
+    \[*) tail="${rest#*]}" ;;
+    *) tail="${rest#"${rest%%:*}"}" ;;
+  esac
+  [ -z "$tail" ] && return 0
+  port="${tail#:}"
+  port="$((10#$port))"
+  [ "$port" -ge 1 ] && [ "$port" -le 65535 ]
+}
+
+# missing_env_names: space separated required names that are absent or empty (the web names too when enabled).
 missing_env_names() {
-  local name missing=""
-  for name in $REQUIRED_ENV_NAMES; do
+  local name names="$REQUIRED_ENV_NAMES" missing=""
+  if web_enabled; then
+    names="$names $WEB_REQUIRED_ENV_NAMES"
+  fi
+  for name in $names; do
     if [ -z "$(env_get "$name")" ]; then
       missing="$missing $name"
     fi
@@ -442,8 +489,8 @@ show_logs() {
 wait_stack_ready() {
   local rc=0
   info "Waiting for the services to become ready (up to $1 seconds)..."
-  # shellcheck disable=SC2086
-  wait_healthy "$1" $STACK_SERVICES || rc=$?
+  # shellcheck disable=SC2046  # one word per service
+  wait_healthy "$1" $(stack_services) || rc=$?
   if [ "$rc" -eq 0 ]; then
     ok "All services are ready."
     return 0
