@@ -3,7 +3,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import { PG_POOL_CONNECT_TIMEOUT_MS, PG_QUERY_TIMEOUT_MS } from '../../config/constants.js';
-import { safeError } from '../../utils/errors.js';
+import { safeError } from '../../utils/safe-error.js';
 import type { Logger } from '../../utils/logger.js';
 import * as schema from './schema.js';
 
@@ -39,14 +39,14 @@ export const PG_UNDEFINED_COLUMN = '42703';
 export const SCHEMA_PROBE = sql`select gs.xp_ignored_role_ids, mc.case_number, cc.last_case_number, ml.xp, lr.role_id
   from guild_settings gs, mod_cases mc, mod_case_counters cc, member_levels ml, level_role_rewards lr limit 0`;
 
-/** Creates the pool lazily: no connection is opened until the first query. */
-export function createPostgres(databaseUrl: string, logger: Logger): PostgresClient {
+/** Creates the pool lazily: no connection is opened until the first query. The web passes perry-web as the name. */
+export function createPostgres(databaseUrl: string, logger: Logger, applicationName = 'perry-bot'): PostgresClient {
   const pool = new pg.Pool({
     connectionString: databaseUrl,
     max: 10,
     connectionTimeoutMillis: PG_POOL_CONNECT_TIMEOUT_MS,
     query_timeout: PG_QUERY_TIMEOUT_MS,
-    application_name: 'perry-bot',
+    application_name: applicationName,
   });
   // Mandatory: an idle client that loses its connection emits 'error' on the pool, unhandled it would crash the process.
   pool.on('error', (err) => {
@@ -57,17 +57,22 @@ export function createPostgres(databaseUrl: string, logger: Logger): PostgresCli
 
 /**
  * Probes the schema (SCHEMA_PROBE). Resolves true when it is current;
- * false when migrations are missing or outdated (logs the single "run npm run db:migrate" line).
+ * false when migrations are missing or outdated (logs the single "Database schema is missing or outdated" line
+ * with the hint; the web passes its own hint because its probe recovers once the bot has migrated).
  * Other failures are rethrown.
  */
-export async function ensureSchema(db: Database, logger: Logger): Promise<boolean> {
+export async function ensureSchema(
+  db: Database,
+  logger: Logger,
+  hint = 'Run "npm run db:migrate" and restart the bot',
+): Promise<boolean> {
   try {
     await db.execute(SCHEMA_PROBE);
     return true;
   } catch (err) {
     const code = pgErrorCode(err);
     if (code === PG_UNDEFINED_TABLE || code === PG_UNDEFINED_COLUMN) {
-      logger.error('Database schema is missing or outdated. Run "npm run db:migrate" and restart the bot');
+      logger.error(`Database schema is missing or outdated. ${hint}`);
       return false;
     }
     throw err;

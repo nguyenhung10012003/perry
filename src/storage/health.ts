@@ -1,5 +1,5 @@
 import { STORAGE_BACKOFF_MS } from '../config/constants.js';
-import { safeError } from '../utils/errors.js';
+import { safeError } from '../utils/safe-error.js';
 import type { Logger } from '../utils/logger.js';
 
 export type RecoverHook = () => void | Promise<void>;

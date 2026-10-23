@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Redis } from 'ioredis';
-import { safeError } from '../../utils/errors.js';
+import { safeError } from '../../utils/safe-error.js';
 import type { Logger } from '../../utils/logger.js';
 import type { BackendHealth } from '../health.js';
 

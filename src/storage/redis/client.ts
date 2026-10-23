@@ -19,10 +19,11 @@ export interface RedisConnection {
 /**
  * Creates the ioredis client. It reconnects forever with STORAGE_BACKOFF_MS, fails commands fast while
  * disconnected (no offline queue) and feeds ready/close/error events into BackendHealth.
+ * connectionName shows up in `CLIENT LIST` (the web passes perry-web).
  */
-export function createRedis(url: string, logger: Logger): RedisConnection {
+export function createRedis(url: string, logger: Logger, connectionName = 'perry-bot'): RedisConnection {
   const client = new Redis(url, {
-    connectionName: 'perry-bot',
+    connectionName,
     lazyConnect: false,
     enableOfflineQueue: false,
     maxRetriesPerRequest: 1,

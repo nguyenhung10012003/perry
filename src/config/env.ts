@@ -3,17 +3,27 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { FALLBACK_LOCALE, LOCALES } from "../i18n/locales.js";
 import type { Locale } from "../i18n/locales.js";
-import { registerSecrets } from "../utils/errors.js";
+import { registerSecrets } from "../utils/safe-error.js";
+import {
+  booleanString,
+  exitInvalid,
+  optionalText,
+  POSTGRES_PROTOCOLS,
+  REDIS_PROTOCOLS,
+  registerUrlSecrets,
+  urlProblem,
+} from "./env-helpers.js";
 
-const booleanString = z.enum(["true", "false"]).transform((v) => v === "true");
-
-/** Trims a string; an empty string counts as "not set" (.env.example ships empty placeholders). */
-const optionalText = z
-  .string()
-  .optional()
-  .transform((v) =>
-    v === undefined || v.trim() === "" ? undefined : v.trim(),
-  );
+// The helpers moved to env-helpers.ts (shared with the web); re-exported for existing imports.
+export {
+  booleanString,
+  exitInvalid,
+  optionalText,
+  POSTGRES_PROTOCOLS,
+  REDIS_PROTOCOLS,
+  registerUrlSecrets,
+  urlProblem,
+} from "./env-helpers.js";
 
 const PROVIDER_IDS = ["ytmix", "lastfm", "lavasrc", "artist"] as const;
 export type DiscoveryProviderId = (typeof PROVIDER_IDS)[number];
@@ -36,46 +46,6 @@ const providerList = z
     }
     return result;
   });
-
-const POSTGRES_PROTOCOLS = ["postgres:", "postgresql:"];
-const REDIS_PROTOCOLS = ["redis:", "rediss:"];
-
-/** Describes why a connection string is unusable. The message never contains the value. */
-function urlProblem(
-  value: string | undefined,
-  protocols: readonly string[],
-): string | undefined {
-  if (value === undefined) return "required (see .env.example)";
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    return "must be a valid URL";
-  }
-  if (!protocols.includes(url.protocol))
-    return `must start with ${protocols.map((p) => `${p}//`).join(" or ")}`;
-  try {
-    // Client libraries percent-decode credentials and throw on malformed sequences.
-    decodeURIComponent(url.username);
-    decodeURIComponent(url.password);
-  } catch {
-    return "must be a valid URL (percent-encode special characters in the credentials)";
-  }
-  return undefined;
-}
-
-/** Registers the raw connection string and its password (plain and percent-decoded) as secrets. */
-function registerUrlSecrets(value: string | undefined): void {
-  if (value === undefined) return;
-  registerSecrets(value);
-  try {
-    const url = new URL(value);
-    registerSecrets(url.password);
-    registerSecrets(decodeURIComponent(url.password));
-  } catch {
-    // The value was already rejected or is not parseable; the raw string is registered above.
-  }
-}
 
 const schema = z
   .object({
@@ -210,19 +180,6 @@ function loadDotEnv(): void {
   if (existsSync(path)) process.loadEnvFile(path);
 }
 
-/** Prints variable names with a short reason (never values) and exits with code 1. */
-function exitInvalid(error: z.ZodError): never {
-  const lines = error.issues.map((issue) => {
-    const name = issue.path.map(String).join(".") || "(root)";
-    const reason =
-      issue.code === "invalid_type" ? "missing or invalid" : issue.message;
-    return `  - ${name}: ${reason}`;
-  });
-  process.stderr.write(
-    `Invalid configuration. Check these environment variables:\n${lines.join("\n")}\n`,
-  );
-  process.exit(1);
-}
 
 /** Loads and validates configuration. Exits the process (code 1) listing variable names only on failure. */
 export function loadConfig(): Config {

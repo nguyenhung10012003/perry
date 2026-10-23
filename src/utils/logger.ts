@@ -1,7 +1,7 @@
 import { pino } from 'pino';
 import type { Logger } from 'pino';
 import type { Config } from '../config/env.js';
-import { setIncludeStacks } from './errors.js';
+import { setIncludeStacks } from './safe-error.js';
 
 export type { Logger };
 
@@ -17,12 +17,20 @@ export function createLogger(config: Pick<Config, 'logLevel' | 'logPretty'>): Lo
         'databaseUrl',
         'redisUrl',
         'apiKey',
+        'accessToken',
+        'clientSecret',
+        'sessionSecret',
+        'csrfToken',
         '*.token',
         '*.password',
         '*.authorization',
         '*.databaseUrl',
         '*.redisUrl',
         '*.apiKey',
+        '*.accessToken',
+        '*.clientSecret',
+        '*.sessionSecret',
+        '*.csrfToken',
       ],
       censor: '[REDACTED]',
     },
