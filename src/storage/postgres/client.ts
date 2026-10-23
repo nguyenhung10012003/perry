@@ -36,8 +36,8 @@ export const PG_UNDEFINED_COLUMN = '42703';
  * Schema probe shared by ensureSchema() and the Postgres health probe, so they cannot drift.
  * Touches the newest column of every table; LIMIT 0 makes the cross join free.
  */
-export const SCHEMA_PROBE = sql`select gs.mod_dm_target, mc.case_number, cc.last_case_number
-  from guild_settings gs, mod_cases mc, mod_case_counters cc limit 0`;
+export const SCHEMA_PROBE = sql`select gs.xp_ignored_role_ids, mc.case_number, cc.last_case_number, ml.xp, lr.role_id
+  from guild_settings gs, mod_cases mc, mod_case_counters cc, member_levels ml, level_role_rewards lr limit 0`;
 
 /** Creates the pool lazily: no connection is opened until the first query. */
 export function createPostgres(databaseUrl: string, logger: Logger): PostgresClient {

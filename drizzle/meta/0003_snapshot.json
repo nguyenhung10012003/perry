@@ -1,0 +1,870 @@
+{
+  "id": "ab970df4-7de8-4325-97aa-e6beef138292",
+  "prevId": "f8f75b18-4e44-49ae-bfa7-339b971809ca",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.guild_settings": {
+      "name": "guild_settings",
+      "schema": "",
+      "columns": {
+        "guild_id": {
+          "name": "guild_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "dj_role_id": {
+          "name": "dj_role_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "default_volume": {
+          "name": "default_volume",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 100
+        },
+        "twenty_four_seven": {
+          "name": "twenty_four_seven",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "autoplay_enabled": {
+          "name": "autoplay_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "autoplay_mode": {
+          "name": "autoplay_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'related'"
+        },
+        "default_text_channel_id": {
+          "name": "default_text_channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "default_voice_channel_id": {
+          "name": "default_voice_channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "language": {
+          "name": "language",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "mod_log_channel_id": {
+          "name": "mod_log_channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mod_dm_target": {
+          "name": "mod_dm_target",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "leveling_enabled": {
+          "name": "leveling_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "xp_multiplier_percent": {
+          "name": "xp_multiplier_percent",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 100
+        },
+        "level_up_mode": {
+          "name": "level_up_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'current'"
+        },
+        "level_up_channel_id": {
+          "name": "level_up_channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "xp_ignored_channel_ids": {
+          "name": "xp_ignored_channel_ids",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'"
+        },
+        "xp_ignored_role_ids": {
+          "name": "xp_ignored_role_ids",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'"
+        },
+        "level_reward_mode": {
+          "name": "level_reward_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'stack'"
+        },
+        "leaderboard_public": {
+          "name": "leaderboard_public",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "guild_settings_default_volume_check": {
+          "name": "guild_settings_default_volume_check",
+          "value": "\"guild_settings\".\"default_volume\" between 0 and 150"
+        },
+        "guild_settings_autoplay_mode_check": {
+          "name": "guild_settings_autoplay_mode_check",
+          "value": "\"guild_settings\".\"autoplay_mode\" in ('related', 'seed')"
+        },
+        "guild_settings_language_check": {
+          "name": "guild_settings_language_check",
+          "value": "\"guild_settings\".\"language\" in ('en', 'vi')"
+        },
+        "guild_settings_xp_multiplier_check": {
+          "name": "guild_settings_xp_multiplier_check",
+          "value": "\"guild_settings\".\"xp_multiplier_percent\" between 10 and 500"
+        },
+        "guild_settings_level_up_mode_check": {
+          "name": "guild_settings_level_up_mode_check",
+          "value": "\"guild_settings\".\"level_up_mode\" in ('off', 'current', 'channel', 'dm')"
+        },
+        "guild_settings_level_reward_mode_check": {
+          "name": "guild_settings_level_reward_mode_check",
+          "value": "\"guild_settings\".\"level_reward_mode\" in ('stack', 'highest')"
+        },
+        "guild_settings_xp_ignored_channels_check": {
+          "name": "guild_settings_xp_ignored_channels_check",
+          "value": "cardinality(\"guild_settings\".\"xp_ignored_channel_ids\") <= 50"
+        },
+        "guild_settings_xp_ignored_roles_check": {
+          "name": "guild_settings_xp_ignored_roles_check",
+          "value": "cardinality(\"guild_settings\".\"xp_ignored_role_ids\") <= 50"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.level_role_rewards": {
+      "name": "level_role_rewards",
+      "schema": "",
+      "columns": {
+        "guild_id": {
+          "name": "guild_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "level": {
+          "name": "level",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role_id": {
+          "name": "role_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "level_role_rewards_pkey": {
+          "name": "level_role_rewards_pkey",
+          "columns": [
+            "guild_id",
+            "level"
+          ]
+        }
+      },
+      "uniqueConstraints": {
+        "level_role_rewards_guild_role_unique": {
+          "name": "level_role_rewards_guild_role_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "guild_id",
+            "role_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "level_role_rewards_level_check": {
+          "name": "level_role_rewards_level_check",
+          "value": "\"level_role_rewards\".\"level\" between 1 and 1000"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.member_levels": {
+      "name": "member_levels",
+      "schema": "",
+      "columns": {
+        "guild_id": {
+          "name": "guild_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "xp": {
+          "name": "xp",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "level": {
+          "name": "level",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "username": {
+          "name": "username",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "avatar": {
+          "name": "avatar",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "member_levels_guild_xp_idx": {
+          "name": "member_levels_guild_xp_idx",
+          "columns": [
+            {
+              "expression": "guild_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "xp",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "member_levels_pkey": {
+          "name": "member_levels_pkey",
+          "columns": [
+            "guild_id",
+            "user_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "member_levels_xp_check": {
+          "name": "member_levels_xp_check",
+          "value": "\"member_levels\".\"xp\" between 0 and 2000000000"
+        },
+        "member_levels_level_check": {
+          "name": "member_levels_level_check",
+          "value": "\"member_levels\".\"level\" between 0 and 2000"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.mod_case_counters": {
+      "name": "mod_case_counters",
+      "schema": "",
+      "columns": {
+        "guild_id": {
+          "name": "guild_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "last_case_number": {
+          "name": "last_case_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "mod_case_counters_last_check": {
+          "name": "mod_case_counters_last_check",
+          "value": "\"mod_case_counters\".\"last_case_number\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.mod_cases": {
+      "name": "mod_cases",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "mod_cases_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "guild_id": {
+          "name": "guild_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "case_number": {
+          "name": "case_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_id": {
+          "name": "target_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_tag": {
+          "name": "target_tag",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "moderator_id": {
+          "name": "moderator_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "moderator_tag": {
+          "name": "moderator_tag",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "duration_seconds": {
+          "name": "duration_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dm_sent": {
+          "name": "dm_sent",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "log_channel_id": {
+          "name": "log_channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "log_message_id": {
+          "name": "log_message_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "mod_cases_guild_target_created_idx": {
+          "name": "mod_cases_guild_target_created_idx",
+          "columns": [
+            {
+              "expression": "guild_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "target_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "mod_cases_guild_case_unique": {
+          "name": "mod_cases_guild_case_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "guild_id",
+            "case_number"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "mod_cases_action_check": {
+          "name": "mod_cases_action_check",
+          "value": "\"mod_cases\".\"action\" in ('ban', 'unban', 'kick', 'timeout', 'untimeout', 'warn')"
+        },
+        "mod_cases_reason_check": {
+          "name": "mod_cases_reason_check",
+          "value": "\"mod_cases\".\"reason\" is null or char_length(\"mod_cases\".\"reason\") <= 512"
+        },
+        "mod_cases_duration_check": {
+          "name": "mod_cases_duration_check",
+          "value": "\"mod_cases\".\"duration_seconds\" is null or \"mod_cases\".\"duration_seconds\" between 1 and 2419200"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.play_history": {
+      "name": "play_history",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "play_history_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "guild_id": {
+          "name": "guild_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "played_at": {
+          "name": "played_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "identifier": {
+          "name": "identifier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_name": {
+          "name": "source_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "author": {
+          "name": "author",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "duration_ms": {
+          "name": "duration_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "requester_id": {
+          "name": "requester_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "discovery_provider": {
+          "name": "discovery_provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "play_history_guild_played_at_idx": {
+          "name": "play_history_guild_played_at_idx",
+          "columns": [
+            {
+              "expression": "guild_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "played_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.playlist_tracks": {
+      "name": "playlist_tracks",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "playlist_tracks_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "playlist_id": {
+          "name": "playlist_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "author": {
+          "name": "author",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "uri": {
+          "name": "uri",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "identifier": {
+          "name": "identifier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_name": {
+          "name": "source_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "duration_ms": {
+          "name": "duration_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "added_by": {
+          "name": "added_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "playlist_tracks_playlist_position_idx": {
+          "name": "playlist_tracks_playlist_position_idx",
+          "columns": [
+            {
+              "expression": "playlist_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "position",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "playlist_tracks_playlist_id_playlists_id_fk": {
+          "name": "playlist_tracks_playlist_id_playlists_id_fk",
+          "tableFrom": "playlist_tracks",
+          "tableTo": "playlists",
+          "columnsFrom": [
+            "playlist_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.playlists": {
+      "name": "playlists",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "playlists_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "owner_type": {
+          "name": "owner_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "playlists_owner_name_unique": {
+          "name": "playlists_owner_name_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "owner_type",
+            "owner_id",
+            "name"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "playlists_owner_type_check": {
+          "name": "playlists_owner_type_check",
+          "value": "\"playlists\".\"owner_type\" in ('user', 'guild')"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

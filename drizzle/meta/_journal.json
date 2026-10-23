@@ -22,6 +22,13 @@
       "when": 1792744592914,
       "tag": "0002_moderation",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792748853540,
+      "tag": "0003_leveling",
+      "breakpoints": true
     }
   ]
 }

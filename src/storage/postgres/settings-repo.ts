@@ -1,7 +1,12 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, or, sql } from 'drizzle-orm';
 import { isLocale } from '../../i18n/locales.js';
 import type { GuildSettings } from '../../settings/guild-settings.js';
-import { AUTOPLAY_MODES, defaultSettings } from '../../settings/guild-settings.js';
+import {
+  AUTOPLAY_MODES,
+  defaultSettings,
+  LEVEL_REWARD_MODES,
+  LEVEL_UP_MODES,
+} from '../../settings/guild-settings.js';
 import type { Database } from './client.js';
 import { guildSettings } from './schema.js';
 
@@ -12,18 +17,29 @@ type Row = typeof guildSettings.$inferSelect;
 type Columns = Partial<typeof guildSettings.$inferInsert>;
 
 function toSettings(row: Row): GuildSettings {
+  const defaults = defaultSettings();
   const mode = AUTOPLAY_MODES.find((candidate) => candidate === row.autoplayMode);
+  const levelUpMode = LEVEL_UP_MODES.find((candidate) => candidate === row.levelUpMode);
+  const levelRewardMode = LEVEL_REWARD_MODES.find((candidate) => candidate === row.levelRewardMode);
   return {
     djRoleId: row.djRoleId,
     defaultVolume: row.defaultVolume,
     twentyFourSeven: row.twentyFourSeven,
     autoplayEnabled: row.autoplayEnabled,
-    autoplayMode: mode ?? defaultSettings().autoplayMode,
+    autoplayMode: mode ?? defaults.autoplayMode,
     defaultTextChannelId: row.defaultTextChannelId,
     defaultVoiceChannelId: row.defaultVoiceChannelId,
     language: isLocale(row.language) ? row.language : null,
     modLogChannelId: row.modLogChannelId,
     modDmTarget: row.modDmTarget,
+    levelingEnabled: row.levelingEnabled,
+    xpMultiplierPercent: row.xpMultiplierPercent,
+    levelUpMode: levelUpMode ?? defaults.levelUpMode,
+    levelUpChannelId: row.levelUpChannelId,
+    xpIgnoredChannelIds: [...row.xpIgnoredChannelIds],
+    xpIgnoredRoleIds: [...row.xpIgnoredRoleIds],
+    levelRewardMode: levelRewardMode ?? defaults.levelRewardMode,
+    leaderboardPublic: row.leaderboardPublic,
   };
 }
 
@@ -40,6 +56,14 @@ function toColumns(patch: Partial<GuildSettings>): Columns {
   if (patch.language !== undefined) columns.language = patch.language;
   if (patch.modLogChannelId !== undefined) columns.modLogChannelId = patch.modLogChannelId;
   if (patch.modDmTarget !== undefined) columns.modDmTarget = patch.modDmTarget;
+  if (patch.levelingEnabled !== undefined) columns.levelingEnabled = patch.levelingEnabled;
+  if (patch.xpMultiplierPercent !== undefined) columns.xpMultiplierPercent = patch.xpMultiplierPercent;
+  if (patch.levelUpMode !== undefined) columns.levelUpMode = patch.levelUpMode;
+  if (patch.levelUpChannelId !== undefined) columns.levelUpChannelId = patch.levelUpChannelId;
+  if (patch.xpIgnoredChannelIds !== undefined) columns.xpIgnoredChannelIds = [...patch.xpIgnoredChannelIds];
+  if (patch.xpIgnoredRoleIds !== undefined) columns.xpIgnoredRoleIds = [...patch.xpIgnoredRoleIds];
+  if (patch.levelRewardMode !== undefined) columns.levelRewardMode = patch.levelRewardMode;
+  if (patch.leaderboardPublic !== undefined) columns.leaderboardPublic = patch.leaderboardPublic;
   return columns;
 }
 
@@ -86,9 +110,20 @@ export async function removeChannelReferences(
     .update(guildSettings)
     .set({
       modLogChannelId: sql`nullif(${guildSettings.modLogChannelId}, ${channelId})`,
+      levelUpChannelId: sql`nullif(${guildSettings.levelUpChannelId}, ${channelId})`,
+      xpIgnoredChannelIds: sql`array_remove(${guildSettings.xpIgnoredChannelIds}, ${channelId})`,
       updatedAt: sql`now()`,
     })
-    .where(and(eq(guildSettings.guildId, guildId), eq(guildSettings.modLogChannelId, channelId)))
+    .where(
+      and(
+        eq(guildSettings.guildId, guildId),
+        or(
+          eq(guildSettings.modLogChannelId, channelId),
+          eq(guildSettings.levelUpChannelId, channelId),
+          sql`${channelId} = any(${guildSettings.xpIgnoredChannelIds})`,
+        ),
+      ),
+    )
     .returning();
   const row = rows[0];
   return row ? toSettings(row) : null;
@@ -104,9 +139,15 @@ export async function removeRoleReferences(
     .update(guildSettings)
     .set({
       djRoleId: sql`nullif(${guildSettings.djRoleId}, ${roleId})`,
+      xpIgnoredRoleIds: sql`array_remove(${guildSettings.xpIgnoredRoleIds}, ${roleId})`,
       updatedAt: sql`now()`,
     })
-    .where(and(eq(guildSettings.guildId, guildId), eq(guildSettings.djRoleId, roleId)))
+    .where(
+      and(
+        eq(guildSettings.guildId, guildId),
+        or(eq(guildSettings.djRoleId, roleId), sql`${roleId} = any(${guildSettings.xpIgnoredRoleIds})`),
+      ),
+    )
     .returning();
   const row = rows[0];
   return row ? toSettings(row) : null;

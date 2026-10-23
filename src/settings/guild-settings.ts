@@ -1,10 +1,26 @@
-import { DEFAULT_VOLUME, MAX_VOLUME } from '../config/constants.js';
+import {
+  DEFAULT_VOLUME,
+  MAX_VOLUME,
+  XP_IGNORED_MAX,
+  XP_MULTIPLIER_MAX_PERCENT,
+  XP_MULTIPLIER_MIN_PERCENT,
+} from '../config/constants.js';
 import { LOCALES, isLocale } from '../i18n/locales.js';
 import type { Locale } from '../i18n/locales.js';
 
 export type AutoplayMode = 'related' | 'seed';
 
 export const AUTOPLAY_MODES: readonly AutoplayMode[] = ['related', 'seed'];
+
+/** Where level-up messages go: nowhere, the channel of the message, the configured channel, or a DM. */
+export type LevelUpMode = 'off' | 'current' | 'channel' | 'dm';
+
+export const LEVEL_UP_MODES: readonly LevelUpMode[] = ['off', 'current', 'channel', 'dm'];
+
+/** Role rewards: keep every reward up to the level (stack) or only the highest one (DP-3 (c)). */
+export type LevelRewardMode = 'stack' | 'highest';
+
+export const LEVEL_REWARD_MODES: readonly LevelRewardMode[] = ['stack', 'highest'];
 
 /** Discord snowflake as stored in settings. */
 export const SNOWFLAKE_RE = /^\d{17,20}$/;
@@ -23,6 +39,22 @@ export interface GuildSettings {
   modLogChannelId: string | null;
   /** DM the target of a ban, kick, timeout or warning. */
   modDmTarget: boolean;
+  /** Messages earn XP (off until a manager enables it, A10). */
+  levelingEnabled: boolean;
+  /** XP multiplier in percent, integer 10..500. */
+  xpMultiplierPercent: number;
+  levelUpMode: LevelUpMode;
+  /** Channel for level-up messages in mode 'channel'; null = not set. */
+  levelUpChannelId: string | null;
+  /**
+   * Channels (also covering their threads and, for a category, its channels) and roles that earn no XP; at most
+   * XP_IGNORED_MAX each. Readonly because get() returns shallow copies that share arrays with the cache.
+   */
+  xpIgnoredChannelIds: readonly string[];
+  xpIgnoredRoleIds: readonly string[];
+  levelRewardMode: LevelRewardMode;
+  /** Public leaderboard page on the web (DP-5 (b)). */
+  leaderboardPublic: boolean;
 }
 
 /** A deleted channel or role whose id must be removed from every setting that points to it. */
@@ -52,6 +84,14 @@ export function defaultSettings(): GuildSettings {
     language: null,
     modLogChannelId: null,
     modDmTarget: true,
+    levelingEnabled: false,
+    xpMultiplierPercent: 100,
+    levelUpMode: 'current',
+    levelUpChannelId: null,
+    xpIgnoredChannelIds: [],
+    xpIgnoredRoleIds: [],
+    levelRewardMode: 'stack',
+    leaderboardPublic: false,
   };
 }
 
@@ -62,11 +102,31 @@ export function defaultSettings(): GuildSettings {
 export function referencePatch(settings: GuildSettings, ref: SettingsReference): Partial<GuildSettings> {
   const patch: Partial<GuildSettings> = {};
   if ('channelId' in ref) {
-    if (settings.modLogChannelId === ref.channelId) patch.modLogChannelId = null;
-  } else if (settings.djRoleId === ref.roleId) {
-    patch.djRoleId = null;
+    const { channelId } = ref;
+    if (settings.modLogChannelId === channelId) patch.modLogChannelId = null;
+    if (settings.levelUpChannelId === channelId) patch.levelUpChannelId = null;
+    if (settings.xpIgnoredChannelIds.includes(channelId)) {
+      patch.xpIgnoredChannelIds = settings.xpIgnoredChannelIds.filter((id) => id !== channelId);
+    }
+  } else {
+    const { roleId } = ref;
+    if (settings.djRoleId === roleId) patch.djRoleId = null;
+    if (settings.xpIgnoredRoleIds.includes(roleId)) {
+      patch.xpIgnoredRoleIds = settings.xpIgnoredRoleIds.filter((id) => id !== roleId);
+    }
   }
   return patch;
+}
+
+function isSnowflakeOrNull(value: unknown): boolean {
+  return value === null || (typeof value === 'string' && SNOWFLAKE_RE.test(value));
+}
+
+/** At most XP_IGNORED_MAX unique snowflakes. */
+function isIgnoredList(value: unknown): boolean {
+  if (!Array.isArray(value) || value.length > XP_IGNORED_MAX) return false;
+  const ids: unknown[] = value;
+  return ids.every((id) => typeof id === 'string' && SNOWFLAKE_RE.test(id)) && new Set(ids).size === ids.length;
 }
 
 /** Throws a RangeError for an invalid patch. Shared by every GuildSettingsStore implementation. */
@@ -92,5 +152,36 @@ export function validateSettingsPatch(patch: Partial<GuildSettings>): void {
   }
   if (patch.modDmTarget !== undefined && typeof patch.modDmTarget !== 'boolean') {
     throw new RangeError('modDmTarget must be a boolean');
+  }
+  if (patch.levelingEnabled !== undefined && typeof patch.levelingEnabled !== 'boolean') {
+    throw new RangeError('levelingEnabled must be a boolean');
+  }
+  if (patch.leaderboardPublic !== undefined && typeof patch.leaderboardPublic !== 'boolean') {
+    throw new RangeError('leaderboardPublic must be a boolean');
+  }
+  if (
+    patch.xpMultiplierPercent !== undefined &&
+    (!Number.isInteger(patch.xpMultiplierPercent) ||
+      patch.xpMultiplierPercent < XP_MULTIPLIER_MIN_PERCENT ||
+      patch.xpMultiplierPercent > XP_MULTIPLIER_MAX_PERCENT)
+  ) {
+    throw new RangeError(
+      `xpMultiplierPercent must be an integer between ${XP_MULTIPLIER_MIN_PERCENT} and ${XP_MULTIPLIER_MAX_PERCENT}`,
+    );
+  }
+  if (patch.levelUpMode !== undefined && !LEVEL_UP_MODES.includes(patch.levelUpMode)) {
+    throw new RangeError(`levelUpMode must be one of: ${LEVEL_UP_MODES.join(', ')}`);
+  }
+  if (patch.levelUpChannelId !== undefined && !isSnowflakeOrNull(patch.levelUpChannelId)) {
+    throw new RangeError('levelUpChannelId must be null or a Discord snowflake');
+  }
+  if (patch.xpIgnoredChannelIds !== undefined && !isIgnoredList(patch.xpIgnoredChannelIds)) {
+    throw new RangeError(`xpIgnoredChannelIds must hold at most ${XP_IGNORED_MAX} unique Discord snowflakes`);
+  }
+  if (patch.xpIgnoredRoleIds !== undefined && !isIgnoredList(patch.xpIgnoredRoleIds)) {
+    throw new RangeError(`xpIgnoredRoleIds must hold at most ${XP_IGNORED_MAX} unique Discord snowflakes`);
+  }
+  if (patch.levelRewardMode !== undefined && !LEVEL_REWARD_MODES.includes(patch.levelRewardMode)) {
+    throw new RangeError(`levelRewardMode must be one of: ${LEVEL_REWARD_MODES.join(', ')}`);
   }
 }

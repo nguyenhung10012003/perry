@@ -1,12 +1,18 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { DEFAULT_VOLUME, MAX_VOLUME } from '../config/constants.js';
+import { DEFAULT_VOLUME, MAX_VOLUME, XP_IGNORED_MAX } from '../config/constants.js';
 import type { GuildSettings } from './guild-settings.js';
 import { defaultSettings, referencePatch, validateSettingsPatch } from './guild-settings.js';
 
 const CHANNEL = '123456789012345678';
 const ROLE = '223456789012345678';
 const OTHER = '323456789012345678';
+const CHANNEL_2 = '423456789012345678';
+const ROLE_2 = '523456789012345678';
+
+/** n distinct 18-digit snowflakes. */
+const snowflakes = (n: number): string[] =>
+  Array.from({ length: n }, (_, i) => `6000000000000000${String(i).padStart(2, '0')}`);
 
 describe('defaultSettings', () => {
   it('returns the documented defaults', () => {
@@ -21,6 +27,14 @@ describe('defaultSettings', () => {
       language: null,
       modLogChannelId: null,
       modDmTarget: true,
+      levelingEnabled: false,
+      xpMultiplierPercent: 100,
+      levelUpMode: 'current',
+      levelUpChannelId: null,
+      xpIgnoredChannelIds: [],
+      xpIgnoredRoleIds: [],
+      levelRewardMode: 'stack',
+      leaderboardPublic: false,
     });
   });
 
@@ -73,6 +87,54 @@ describe('validateSettingsPatch', () => {
     ok({ modDmTarget: false });
     bad({ modDmTarget: 'yes' as unknown as boolean });
   });
+
+  it('checks the leveling and public leaderboard toggles', () => {
+    ok({ levelingEnabled: true });
+    ok({ levelingEnabled: false });
+    ok({ leaderboardPublic: true });
+    ok({ leaderboardPublic: false });
+    bad({ levelingEnabled: 1 as unknown as boolean });
+    bad({ leaderboardPublic: 'true' as unknown as boolean });
+  });
+
+  it('checks the XP multiplier bounds', () => {
+    ok({ xpMultiplierPercent: 10 });
+    ok({ xpMultiplierPercent: 100 });
+    ok({ xpMultiplierPercent: 500 });
+    bad({ xpMultiplierPercent: 9 });
+    bad({ xpMultiplierPercent: 501 });
+    bad({ xpMultiplierPercent: 150.5 });
+    bad({ xpMultiplierPercent: Number.NaN });
+  });
+
+  it('checks the level-up mode and the reward mode', () => {
+    for (const levelUpMode of ['off', 'current', 'channel', 'dm'] as const) ok({ levelUpMode });
+    bad({ levelUpMode: 'thread' as GuildSettings['levelUpMode'] });
+    ok({ levelRewardMode: 'stack' });
+    ok({ levelRewardMode: 'highest' });
+    bad({ levelRewardMode: 'all' as GuildSettings['levelRewardMode'] });
+  });
+
+  it('checks the level-up channel', () => {
+    ok({ levelUpChannelId: null });
+    ok({ levelUpChannelId: CHANNEL });
+    bad({ levelUpChannelId: '1234567890123456' });
+    bad({ levelUpChannelId: '<#123456789012345678>' });
+    bad({ levelUpChannelId: 5 as unknown as string });
+  });
+
+  it('checks the ignored channel and role lists', () => {
+    for (const key of ['xpIgnoredChannelIds', 'xpIgnoredRoleIds'] as const) {
+      ok({ [key]: [] });
+      ok({ [key]: [CHANNEL, ROLE] });
+      ok({ [key]: snowflakes(XP_IGNORED_MAX) });
+      bad({ [key]: snowflakes(XP_IGNORED_MAX + 1) });
+      bad({ [key]: [CHANNEL, CHANNEL] });
+      bad({ [key]: ['123'] });
+      bad({ [key]: [CHANNEL, 7 as unknown as string] });
+      bad({ [key]: CHANNEL as unknown as string[] });
+    }
+  });
 });
 
 describe('referencePatch', () => {
@@ -97,5 +159,45 @@ describe('referencePatch', () => {
   it('leaves the unused default channels alone', () => {
     const withDefaults: GuildSettings = { ...defaultSettings(), defaultTextChannelId: CHANNEL };
     assert.deepEqual(referencePatch(withDefaults, { channelId: CHANNEL }), {});
+  });
+
+  const leveling: GuildSettings = {
+    ...defaultSettings(),
+    modLogChannelId: CHANNEL,
+    levelUpChannelId: CHANNEL,
+    xpIgnoredChannelIds: [CHANNEL_2, CHANNEL],
+    djRoleId: ROLE,
+    xpIgnoredRoleIds: [ROLE, ROLE_2],
+  };
+
+  it('clears the level-up channel and removes a deleted channel from the ignored channels', () => {
+    assert.deepEqual(referencePatch(leveling, { channelId: CHANNEL }), {
+      modLogChannelId: null,
+      levelUpChannelId: null,
+      xpIgnoredChannelIds: [CHANNEL_2],
+    });
+    assert.deepEqual(referencePatch(leveling, { channelId: CHANNEL_2 }), { xpIgnoredChannelIds: [CHANNEL] });
+  });
+
+  it('removes a deleted role from the ignored roles', () => {
+    assert.deepEqual(referencePatch(leveling, { roleId: ROLE }), { djRoleId: null, xpIgnoredRoleIds: [ROLE_2] });
+    assert.deepEqual(referencePatch(leveling, { roleId: ROLE_2 }), { xpIgnoredRoleIds: [ROLE] });
+  });
+
+  it('does not mutate the settings arrays', () => {
+    referencePatch(leveling, { channelId: CHANNEL });
+    referencePatch(leveling, { roleId: ROLE });
+    assert.deepEqual(leveling.xpIgnoredChannelIds, [CHANNEL_2, CHANNEL]);
+    assert.deepEqual(leveling.xpIgnoredRoleIds, [ROLE, ROLE_2]);
+  });
+
+  it('applied in sequence, removals of every listed id empty the lists', () => {
+    let current: GuildSettings = { ...leveling };
+    for (const ref of [{ channelId: CHANNEL }, { channelId: CHANNEL_2 }, { roleId: ROLE }, { roleId: ROLE_2 }]) {
+      current = { ...current, ...referencePatch(current, ref) };
+    }
+    assert.deepEqual(current.xpIgnoredChannelIds, []);
+    assert.deepEqual(current.xpIgnoredRoleIds, []);
+    assert.equal(current.levelUpChannelId, null);
   });
 });

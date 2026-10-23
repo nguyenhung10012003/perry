@@ -6,6 +6,7 @@ import {
   index,
   integer,
   pgTable,
+  primaryKey,
   smallint,
   text,
   timestamp,
@@ -30,11 +31,24 @@ export const guildSettings = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     modLogChannelId: text('mod_log_channel_id'),
     modDmTarget: boolean('mod_dm_target').notNull().default(true),
+    levelingEnabled: boolean('leveling_enabled').notNull().default(false),
+    xpMultiplierPercent: smallint('xp_multiplier_percent').notNull().default(100),
+    levelUpMode: text('level_up_mode').notNull().default('current'),
+    levelUpChannelId: text('level_up_channel_id'),
+    xpIgnoredChannelIds: text('xp_ignored_channel_ids').array().notNull().default([]),
+    xpIgnoredRoleIds: text('xp_ignored_role_ids').array().notNull().default([]),
+    levelRewardMode: text('level_reward_mode').notNull().default('stack'),
+    leaderboardPublic: boolean('leaderboard_public').notNull().default(false),
   },
   (table) => [
     check('guild_settings_default_volume_check', sql`${table.defaultVolume} between 0 and 150`),
     check('guild_settings_autoplay_mode_check', sql`${table.autoplayMode} in ('related', 'seed')`),
     check('guild_settings_language_check', sql`${table.language} in ('en', 'vi')`),
+    check('guild_settings_xp_multiplier_check', sql`${table.xpMultiplierPercent} between 10 and 500`),
+    check('guild_settings_level_up_mode_check', sql`${table.levelUpMode} in ('off', 'current', 'channel', 'dm')`),
+    check('guild_settings_level_reward_mode_check', sql`${table.levelRewardMode} in ('stack', 'highest')`),
+    check('guild_settings_xp_ignored_channels_check', sql`cardinality(${table.xpIgnoredChannelIds}) <= 50`),
+    check('guild_settings_xp_ignored_roles_check', sql`cardinality(${table.xpIgnoredRoleIds}) <= 50`),
   ],
 );
 
@@ -132,4 +146,41 @@ export const modCaseCounters = pgTable(
     lastCaseNumber: integer('last_case_number').notNull().default(0),
   },
   (table) => [check('mod_case_counters_last_check', sql`${table.lastCaseNumber} >= 0`)],
+);
+
+/** XP and level of a member in a guild. The leaderboard and rank queries are served by member_levels_guild_xp_idx. */
+export const memberLevels = pgTable(
+  'member_levels',
+  {
+    guildId: text('guild_id').notNull(),
+    userId: text('user_id').notNull(),
+    xp: integer('xp').notNull().default(0),
+    level: integer('level').notNull().default(0),
+    /** Display snapshots (name, avatar hash) for the web leaderboard. */
+    username: text('username'),
+    avatar: text('avatar'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ name: 'member_levels_pkey', columns: [table.guildId, table.userId] }),
+    index('member_levels_guild_xp_idx').on(table.guildId, table.xp.desc(), table.userId),
+    check('member_levels_xp_check', sql`${table.xp} between 0 and 2000000000`),
+    check('member_levels_level_check', sql`${table.level} between 0 and 2000`),
+  ],
+);
+
+/** Role rewards per level: one role per level, and a role is used at most once per guild. */
+export const levelRoleRewards = pgTable(
+  'level_role_rewards',
+  {
+    guildId: text('guild_id').notNull(),
+    level: integer('level').notNull(),
+    roleId: text('role_id').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ name: 'level_role_rewards_pkey', columns: [table.guildId, table.level] }),
+    unique('level_role_rewards_guild_role_unique').on(table.guildId, table.roleId),
+    check('level_role_rewards_level_check', sql`${table.level} between 1 and 1000`),
+  ],
 );

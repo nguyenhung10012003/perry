@@ -91,3 +91,21 @@ export const BAN_DELETE_SECONDS = {
   '3d': 259_200,
   '7d': 604_800,
 } as const;
+
+/** Leveling (v1.4). XP economy defaults (A25): 15-25 XP per eligible message, one grant per 60 s per member. */
+export const XP_COOLDOWN_SECONDS = 60;
+export const XP_PER_MESSAGE_MIN = 15;
+export const XP_PER_MESSAGE_MAX = 25;
+export const XP_MULTIPLIER_MIN_PERCENT = 10;
+export const XP_MULTIPLIER_MAX_PERCENT = 500;
+/** XP cap (A12, about level 1058); below 2^31 - 1, so member_levels.xp fits an `integer`. */
+export const XP_TOTAL_MAX = 2_000_000_000;
+/** Largest `/xp add|remove` amount. */
+export const XP_ADJUST_MAX = 1_000_000;
+export const LEVEL_REWARD_MAX_LEVEL = 1000;
+export const LEVEL_REWARDS_MAX = 25;
+/** Most ignored channels and most ignored roles per guild. */
+export const XP_IGNORED_MAX = 50;
+export const LEADERBOARD_PAGE_SIZE = 10;
+/** Largest `/leaderboard page` option (M11); the requested page is clamped to the last page anyway. */
+export const LEADERBOARD_PAGE_MAX = 10_000;

@@ -1,5 +1,12 @@
 import { z } from 'zod';
-import { MAX_VOLUME, SETTINGS_CACHE_TTL_SECONDS, SETTINGS_L1_TTL_MS } from '../config/constants.js';
+import {
+  MAX_VOLUME,
+  SETTINGS_CACHE_TTL_SECONDS,
+  SETTINGS_L1_TTL_MS,
+  XP_IGNORED_MAX,
+  XP_MULTIPLIER_MAX_PERCENT,
+  XP_MULTIPLIER_MIN_PERCENT,
+} from '../config/constants.js';
 import { LOCALES } from '../i18n/locales.js';
 import type { BackendHealth } from '../storage/health.js';
 import type { Keys } from '../storage/keys.js';
@@ -13,7 +20,13 @@ import {
 } from '../storage/postgres/settings-repo.js';
 import type { KeyValueCache } from '../storage/types.js';
 import type { GuildSettings, GuildSettingsStore, SettingsReference } from './guild-settings.js';
-import { defaultSettings, referencePatch, validateSettingsPatch } from './guild-settings.js';
+import {
+  defaultSettings,
+  LEVEL_REWARD_MODES,
+  LEVEL_UP_MODES,
+  referencePatch,
+  validateSettingsPatch,
+} from './guild-settings.js';
 
 const L1_SWEEP_THRESHOLD = 1000;
 
@@ -27,9 +40,17 @@ const cachedSettingsSchema = z.object({
   defaultVoiceChannelId: z.string().nullable(),
   // Tolerated when absent: v1.2 entries have no language (and their DB row is still null), so no key version bump.
   language: z.enum(LOCALES).nullable().default(null),
-  // v1.4 fields; v1.3 entries decode with the column defaults.
+  // v1.4 fields; v1.3 (and Phase 1) entries decode with the column defaults.
   modLogChannelId: z.string().nullable().default(null),
   modDmTarget: z.boolean().default(true),
+  levelingEnabled: z.boolean().default(false),
+  xpMultiplierPercent: z.number().int().min(XP_MULTIPLIER_MIN_PERCENT).max(XP_MULTIPLIER_MAX_PERCENT).default(100),
+  levelUpMode: z.enum(LEVEL_UP_MODES).default('current'),
+  levelUpChannelId: z.string().nullable().default(null),
+  xpIgnoredChannelIds: z.array(z.string()).max(XP_IGNORED_MAX).default([]),
+  xpIgnoredRoleIds: z.array(z.string()).max(XP_IGNORED_MAX).default([]),
+  levelRewardMode: z.enum(LEVEL_REWARD_MODES).default('stack'),
+  leaderboardPublic: z.boolean().default(false),
 });
 
 export interface PersistentSettingsDeps {
