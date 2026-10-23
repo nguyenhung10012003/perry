@@ -125,8 +125,10 @@ export class LevelingService {
         mode: levelRewardMode,
         memberRoleIds: new Set(member.roles.cache.keys()),
       });
-      if (diff.add.length > 0) await member.roles.add(diff.add, REWARD_REASON);
-      if (diff.remove.length > 0) await member.roles.remove(diff.remove, REWARD_REASON);
+      // One PUT or DELETE per role. The array forms PATCH the full role list built from the member cache, which a
+      // write does not update, so a remove after an add would drop the role just added.
+      for (const roleId of diff.add) await member.roles.add(roleId, REWARD_REASON);
+      for (const roleId of diff.remove) await member.roles.remove(roleId, REWARD_REASON);
       return diff.add;
     } catch (err) {
       const details = { err: safeError(err), userId: member.id };
